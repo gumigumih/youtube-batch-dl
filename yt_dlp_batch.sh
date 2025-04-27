@@ -42,7 +42,13 @@ fi
 METADATA=$(yt-dlp --skip-download --print-json --playlist-items 1 $COOKIES_OPT "$URL")
 CHANNEL_TITLE=$(echo "$METADATA" | jq -r '.channel | select(. != null)')
 PLAYLIST_TITLE=$(echo "$METADATA" | jq -r '.playlist_title | select(. != null)')
-IS_PLAYLIST=$(echo "$METADATA" | jq -r 'has("playlist_index")')
+PLAYLIST_COUNT=$(echo "$METADATA" | jq -r '.playlist_count // 0')
+
+if [ "$PLAYLIST_COUNT" -gt 1 ]; then
+  IS_PLAYLIST=true
+else
+  IS_PLAYLIST=false
+fi
 
 # 保存フォルダ名決定
 if [ -n "$PLAYLIST_TITLE" ]; then
@@ -93,7 +99,7 @@ else
 
   yt-dlp \
     -f "bv*[vcodec^=avc][ext=mp4]+ba[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=mp4]/best[ext=mp4]/best" \
-    -o "000 - %(title)s.%(ext)s" \
+    -o "%(title)s.%(ext)s" \
     --write-thumbnail \
     --convert-thumbnails png \
     --merge-output-format mp4 \

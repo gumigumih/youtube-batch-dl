@@ -44,7 +44,7 @@ YouTube へのログイン状態を使うため、Cookie をエクスポート�
 2. YouTube にログイン
 3. YouTube ページを開いた状態で拡張機能アイコンをクリックして Cookie をエクスポート
 4. ダウンロードしたファイルを `_cookies.txt` にリネーム
-5. スクリプト (`yt-dlp-batch.sh`) と同じディレクトリに置く
+5. スクリプト (`yt_dlp_batch.sh`) と同じディレクトリに置く
 
 > ⚠️ Cookie にはアカウント情報が含まれます。第三者に渡さないよう注意してください！
 
@@ -55,7 +55,8 @@ YouTube へのログイン状態を使うため、Cookie をエクスポート�
 1. ターミナル（bash）でスクリプトを実行：
 
 ```bash
-bash yt-dlp-batch.sh
+chmod +x yt_dlp_batch.sh
+./yt_dlp_batch.sh
 ```
 
 2. 最初に YouTube の URL を聞かれます。
@@ -80,7 +81,7 @@ bash yt-dlp-batch.sh
 | ------------------------- | --------------------------------------- |
 | `000 - タイトル名.mp4` 等 | 動画本体（H.264 形式）                  |
 | `000 - タイトル名.png`    | サムネイル画像                          |
-| `video_list.xlsx`         | ダウンロード一覧（番号・タイトル・URL） |
+| `_video_list.xlsx`        | ダウンロード一覧（番号・タイトル・URL） |
 
 ---
 
