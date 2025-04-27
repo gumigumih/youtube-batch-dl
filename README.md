@@ -40,7 +40,7 @@ YouTube へのログイン状態を使うため、Cookie をエクスポート�
 
 #### 手順
 
-1. Chrome に拡張機能「[Get cookies.txt](https://chrome.google.com/webstore/detail/get-cookiestxt/ekhagklcjbdpajgpjgmbionohlpdbjgc)」をインストール
+1. Chrome に拡張機能「[Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)」をインストール
 2. YouTube にログイン
 3. YouTube ページを開いた状態で拡張機能アイコンをクリックして Cookie をエクスポート
 4. ダウンロードしたファイルを `_cookies.txt` にリネーム
