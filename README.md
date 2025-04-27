@@ -1,4 +1,4 @@
-# README: YouTube バッチダウンロードスクリプトの使い方
+# YouTube バッチダウンロードスクリプトの使い方
 
 このスクリプトは、YouTube のチャンネル・再生リスト・単体動画をまとめてダウンロードできるツールです。
 以下の特徴と使い方をまとめます。
@@ -30,9 +30,23 @@
 
 ```bash
 sudo apt update
-sudo apt install yt-dlp ffmpeg jq python3-pip
+sudo apt install yt-dlp ffmpeg jq python3-pip fzf
 pip3 install pandas openpyxl
 ```
+
+インストール例（Ubuntu/WSL の場合）:
+```bash
+# Homebrewがインストールされていない場合は、まずこちらを実行
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Homebrew経由で必要パッケージをインストール
+brew update
+brew install yt-dlp ffmpeg jq python3 fzf
+
+# pip3でPythonパッケージをインストール
+pip3 install pandas openpyxl
+```
+
 
 ### 2. Cookie ファイル (`_cookies.txt`) を準備
 
@@ -91,7 +105,6 @@ chmod +x yt_dlp_batch.sh
 | ------------------------------------- | --------------------------------------------------------------------------------- |
 | `Sign in to confirm you're not a bot` | Cookie ファイルが必要です。手順に従って`_cookies.txt`を用意してください           |
 | `ValueError: No engine for filetype`  | `openpyxl`がインストールされていません。`pip3 install openpyxl`を実行してください |
-| `NA - タイトル名.mp4`になる           | 単体動画は playlist_index が無いため"000"番で保存されています。正常です           |
 
 ---
 
