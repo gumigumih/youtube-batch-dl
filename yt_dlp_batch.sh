@@ -42,11 +42,13 @@ else
   echo "$URL" > "$URL_FILE"
 fi
 
-# jq 必須
-if ! command -v jq &>/dev/null; then
-  echo "❌ jq が必要です（sudo apt install jq）"
-  exit 1
-fi
+# コマンド存在チェック
+for cmd in jq fzf; do
+  if ! command -v $cmd &>/dev/null; then
+    echo "❌ 必要なコマンド '$cmd' が見つかりません。インストール方法は README.md を参照してください。"
+    exit 1
+  fi
+done
 
 # URL判定と対象名取得
 if [[ "$URL" == *"list="* ]]; then
