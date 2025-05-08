@@ -96,6 +96,9 @@ case "$TYPE" in
     ;;
 esac
 
+# ダウンロード対象表示
+echo "🎯 ダウンロード対象: $TARGET_NAME"
+
 # 保存先ディレクトリ設定
 SAVE_DIR=$(echo "$TARGET_NAME" | sed 's/[\\/:*?"<>|]/_/g')
 mkdir -p "$SAVE_DIR"
@@ -115,14 +118,6 @@ else
   OUTPUT_TEMPLATE="%(playlist_index,0)03d - %(title)s.%(ext)s"
   echo "🎬 通常モード（動画）ダウンロードを選びました"
 fi
-
-# 最初の動画リスト取得
-echo "📄 動画リスト情報を取得中..."
-VIDEO_INFO=$(yt-dlp --flat-playlist --print-json $COOKIES_OPT "$URL")
-VIDEO_COUNT=$(echo "$VIDEO_INFO" | jq -s 'length')
-
-# ダウンロード対象表示
-echo "🎯 ダウンロード対象: $TARGET_NAME"
 
 # 範囲指定
 if [[ "$TYPE" == "playlist" || "$TYPE" == "channel" ]]; then
@@ -157,8 +152,10 @@ else
   RANGE_OPT=""
 fi
 
-# メタデータ収集
-yt-dlp --skip-download --print-json $RANGE_OPT --yes-playlist $COOKIES_OPT "$URL" >> "$METADATA_LOG"
+# 動画リスト取得
+echo "📄 動画メタデータを収集中..."
+VIDEO_INFO=$(yt-dlp --skip-download --print-json $RANGE_OPT --yes-playlist $COOKIES_OPT "$URL" | tee "$METADATA_LOG")
+VIDEO_COUNT=$(echo "$VIDEO_INFO" | jq -s 'length')
 
 # 実ダウンロード
 COUNT=0
