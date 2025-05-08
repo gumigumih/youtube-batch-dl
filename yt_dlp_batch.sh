@@ -26,6 +26,14 @@ METADATA_LOG="_metadata.jsonl"
 EXCEL="_video_list.xlsx"
 BATCH_SIZE=30
 
+# コマンド存在チェック
+for cmd in jq fzf; do
+  if ! command -v $cmd &>/dev/null; then
+    echo "❌ 必要なコマンド '$cmd' が見つかりません。インストール方法は README.md を参照してください。"
+    exit 1
+  fi
+done
+
 # URL入力（履歴あり）
 if [ -f "$URL_FILE" ]; then
   LAST_URL=$(cat "$URL_FILE")
@@ -41,14 +49,6 @@ else
   read -p "🔗 YouTubeのURLを入力してください: " URL
   echo "$URL" > "$URL_FILE"
 fi
-
-# コマンド存在チェック
-for cmd in jq fzf; do
-  if ! command -v $cmd &>/dev/null; then
-    echo "❌ 必要なコマンド '$cmd' が見つかりません。インストール方法は README.md を参照してください。"
-    exit 1
-  fi
-done
 
 # URL判定と対象名取得
 if [[ "$URL" == *"list="* ]]; then
