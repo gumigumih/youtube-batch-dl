@@ -35,6 +35,7 @@ pip3 install pandas openpyxl
 ```
 
 インストール例（Ubuntu/WSL の場合）:
+
 ```bash
 # Homebrewがインストールされていない場合は、まずこちらを実行
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -46,7 +47,6 @@ brew install yt-dlp ffmpeg jq python3 fzf
 # pip3でPythonパッケージをインストール
 pip3 install pandas openpyxl
 ```
-
 
 ### 2. Cookie ファイル (`_cookies.txt`) を準備
 
