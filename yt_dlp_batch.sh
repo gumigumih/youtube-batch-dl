@@ -27,26 +27,42 @@ EXCEL="_video_list.xlsx"
 BATCH_SIZE=30
 
 # コマンド存在チェック
-for cmd in jq fzf yt-dlp python3; do
+for cmd in jq fzf yt-dlp python3 xclip; do
   if ! command -v $cmd &>/dev/null; then
     echo "❌ 必要なコマンド '$cmd' が見つかりません。インストール方法は README.md を参照してください。"
     exit 1
   fi
 done
 
-# URL入力（履歴あり）
+# クリップボードURL取得
+CLIPBOARD_URL=$(xclip -selection clipboard -o 2>/dev/null | tr -d '\r\n[:space:]')
+
+# URL選択肢作成
+OPTIONS=""
 if [ -f "$URL_FILE" ]; then
   LAST_URL=$(cat "$URL_FILE")
-    SELECT=$(printf "%s\n" "前回のURLを使う" "新しいURLを入力する" | fzf --prompt="▶ " --header="前回入力したURL（${LAST_URL}）があります。どうしますか？" --height=30% --border --layout=reverse)
-  if [[ "$SELECT" == "前回のURLを使う" ]]; then
-    URL="$LAST_URL"
-    echo "🔗 前回のURL（${LAST_URL}）を使います"
-  else
-    read -p "🔗 新しいURLを入力してください: " URL
-    echo "$URL" > "$URL_FILE"
-  fi
+  OPTIONS="前回のURLを使う($LAST_URL) 新しいURLを入力する"
 else
-  read -p "🔗 YouTubeのURLを入力してください: " URL
+  OPTIONS="新しいURLを入力する"
+fi
+
+if echo "$CLIPBOARD_URL" | grep -qE '^https?://'; then
+  OPTIONS="クリップボードのURLを使う($CLIPBOARD_URL) $OPTIONS"
+fi
+
+# fzf選択
+SELECT=$(printf "%s\n" $OPTIONS | fzf --prompt="▶ " --header="どのURLを使いますか？" --height=30% --border --layout=reverse)
+
+# 分岐処理
+if [[ "$SELECT" == "前回のURLを使う"* ]]; then
+  URL="$LAST_URL"
+  echo "🔗 前回のURL（${LAST_URL}）を使います"
+elif [[ "$SELECT" == "クリップボードのURLを使う"* ]]; then
+  URL="$CLIPBOARD_URL"
+  echo "$URL" > "$URL_FILE"
+  echo "🔗 クリップボードのURL（${CLIPBOARD_URL}）を使います"
+else
+  read -p "🔗 新しいURLを入力してください: " URL
   echo "$URL" > "$URL_FILE"
 fi
 

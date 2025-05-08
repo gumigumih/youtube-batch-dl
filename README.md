@@ -30,7 +30,7 @@
 
 ```bash
 sudo apt update
-sudo apt install yt-dlp ffmpeg jq python3-pip fzf
+sudo apt install yt-dlp ffmpeg jq python3-pip fzf xclip
 pip3 install pandas openpyxl
 ```
 
@@ -42,7 +42,7 @@ pip3 install pandas openpyxl
 
 # Homebrew経由で必要パッケージをインストール
 brew update
-brew install yt-dlp ffmpeg jq python3 fzf
+brew install yt-dlp ffmpeg jq python3 fzf xclip
 
 # pip3でPythonパッケージをインストール
 pip3 install pandas openpyxl
