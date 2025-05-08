@@ -167,12 +167,13 @@ while IFS= read -r LINE; do
   ID=$(echo "$LINE" | jq -r '.id')
   TITLE=$(echo "$LINE" | jq -r '.title')
   COUNT=$((COUNT + 1))
+  COUNT_PAD=$(printf "%03d" "$COUNT")
 
   echo "🎬 [$COUNT/$VIDEO_COUNT] $TITLE をダウンロード中..."
 
   yt-dlp \
     $DOWNLOAD_OPT \
-    -o "$OUTPUT_TEMPLATE" \
+    -o "${COUNT_PAD} - %(title)s.%(ext)s" \
     --write-thumbnail \
     --convert-thumbnails png \
     --compat-options filename-sanitization \
