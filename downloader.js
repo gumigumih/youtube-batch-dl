@@ -189,7 +189,53 @@ const selectDownloadMode = async () => {
   return response.mode;
 };
 
-// 保存ディレクトリ名を取得
+// クッキーファイルの確認と処理
+const checkCookiesFile = async () => {
+  try {
+    if (!fs.existsSync('_cookies.txt')) {
+      console.log('⚠️ クッキーファイルが見つかりません。');
+      const response = await prompts({
+        type: 'select',
+        name: 'cookieSource',
+        message: 'クッキーの取得方法を選択してください',
+        choices: [
+          { title: 'ブラウザから取得する', value: 'browser' },
+          { title: '認証なしで続行する', value: 'none' }
+        ]
+      });
+
+      if (response.cookieSource === 'browser') {
+        const browserResponse = await prompts({
+          type: 'select',
+          name: 'browser',
+          message: '使用するブラウザを選択してください',
+          choices: [
+            { title: 'Chrome', value: 'chrome' },
+            { title: 'Firefox', value: 'firefox' },
+            { title: 'Edge', value: 'edge' },
+            { title: 'Safari', value: 'safari' }
+          ]
+        });
+
+        try {
+          await execPromise(`yt-dlp --cookies-from-browser ${browserResponse.browser} --cookies _cookies.txt`);
+          console.log('✅ クッキーファイルを作成しました');
+          return true;
+        } catch (e) {
+          console.error('❌ クッキーの取得に失敗しました:', e.message);
+          return false;
+        }
+      }
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('❌ クッキーファイルの確認中にエラーが発生しました:', e.message);
+    return false;
+  }
+};
+
+// 動画情報を取得
 const getTargetName = async (url) => {
   try {
     const options = [
@@ -197,11 +243,15 @@ const getTargetName = async (url) => {
       '--no-call-home',
       '--no-check-certificate',
       '--flat-playlist',
-      '--dump-json',
-      '--cookies', '_cookies.txt'
-    ].join(' ');
+      '--dump-json'
+    ];
 
-    const { stdout } = await execPromise(`yt-dlp ${options} "${url}"`);
+    // クッキーファイルが存在する場合のみ追加
+    if (await checkCookiesFile()) {
+      options.push('--cookies', '_cookies.txt');
+    }
+
+    const { stdout } = await execPromise(`yt-dlp ${options.join(' ')} "${url}"`);
     
     // 複数のJSONオブジェクトを処理
     const jsonObjects = stdout.trim().split('\n').map(line => {
@@ -276,22 +326,37 @@ const getPlaylistInfo = async (url) => {
 };
 
 // ダウンロード範囲を選択
-const selectDownloadRange = async (url) => {
+const selectDownloadRange = async (url, isFirstUrl, totalUrls) => {
+  const choices = [
+    { title: 'このURLのすべてをダウンロード', value: 'all_current' },
+    { title: 'このURLの範囲を指定する', value: 'range' }
+  ];
+
+  // 複数URLの場合のみ「すべてのURLで全てをダウンロード」を追加
+  if (totalUrls > 1) {
+    choices.unshift({ title: 'すべてのURLのすべてをダウンロード', value: 'all_all' });
+  }
+
   const response = await prompts({
     type: 'select',
     name: 'range',
     message: 'ダウンロード範囲を選択してください',
-    choices: [
-      { title: 'すべてダウンロード', value: 'all' },
-      { title: '範囲を指定する', value: 'range' }
-    ]
+    choices: choices
   });
 
-  if (response.range === 'all') {
-    return '';
+  if (response.range === 'all_all') {
+    return { option: '', applyToAll: true };
+  } else if (response.range === 'all_current') {
+    return { option: '', applyToAll: false };
+  } else {
+    // 範囲を指定する場合
+    const rangeOption = await selectRangeForUrl(url);
+    return { option: rangeOption, applyToAll: false };
   }
+};
 
-  // 範囲指定を選択した場合、プレイリスト情報を取得
+// URLごとの範囲選択処理
+const selectRangeForUrl = async (url) => {
   startLoading("プレイリスト情報を取得中です...");
   const videoList = await getPlaylistInfo(url);
   stopLoading();
@@ -363,27 +428,6 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
     ? ['-x', '--audio-format', 'mp3', '--audio-quality', '0'] 
     : ['-f', '"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"', '--merge-output-format', 'mp4', '--embed-thumbnail'];
 
-  // 動画情報を取得
-  const infoOptions = [
-    '--no-warnings',
-    '--no-call-home',
-    '--no-check-certificate',
-    '--flat-playlist',
-    '--dump-json',
-    '--cookies', '_cookies.txt'
-  ].join(' ');
-
-  const { stdout: infoStdout } = await execPromise(`yt-dlp ${infoOptions} "${url}"`);
-  const videoInfos = infoStdout.trim().split('\n')
-    .map(line => {
-      try {
-        return JSON.parse(line);
-      } catch (e) {
-        return null;
-      }
-    })
-    .filter(info => info !== null);
-
   // ダウンロードオプション
   const downloadOptions = [
     ...options,
@@ -393,13 +437,17 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
     '--convert-thumbnails', 'png',
     '--compat-options', 'filename-sanitization',
     '--download-archive', '_downloaded.txt',
-    '--cookies', '_cookies.txt',
     '--newline',
     '--progress-template', '"%(progress._percent_str)s"',
     '--no-warnings',
     '--no-call-home',
     '--no-check-certificate'
   ];
+
+  // クッキーファイルが存在する場合のみ追加
+  if (await checkCookiesFile()) {
+    downloadOptions.push('--cookies', '_cookies.txt');
+  }
 
   try {    
     const command = `yt-dlp ${downloadOptions.join(' ')} "${url}"`;
@@ -487,16 +535,26 @@ process.on('SIGINT', () => {
   const mode = await selectDownloadMode();
   console.log('選択されたモード:', mode);
 
+  let rangeOption = '';
+  let applyToAll = false;
+
   // 各URLに対して処理
-  for (const url of urls) {
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
     startLoading("動画のタイトルと情報を取得中です...");
     const targetName = await getTargetName(url);
     stopLoading();
     const saveDir = createSaveDir(targetName);
     
-    let rangeOption = '';
     if (url.includes('list=') || url.includes('/@') || url.includes('/channel/')) {
-      rangeOption = await selectDownloadRange(url);
+      if (i === 0 || !applyToAll) {
+        const rangeResult = await selectDownloadRange(url, i === 0, urls.length);
+        rangeOption = rangeResult.option;
+        applyToAll = rangeResult.applyToAll;
+      }
+    } else {
+      // 通常の動画の場合は範囲選択をスキップ
+      rangeOption = '';
     }
     
     await runDownload(url, mode, saveDir, rangeOption);
