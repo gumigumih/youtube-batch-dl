@@ -8,29 +8,44 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const ffmpeg = require('@ffmpeg-installer/ffmpeg');
+const readline = require('readline');
 
 // ローディングアニメーション用の変数
-let loadingInterval;
+let loadingInterval = null;
 
 // ローディングアニメーションを開始
 const startLoading = (message) => {
   // 既存のアニメーションを停止
   if (loadingInterval) {
     clearInterval(loadingInterval);
+    loadingInterval = null;
   }
   
   const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   let i = 0;
-  process.stdout.write('\x1B[?25l'); // カーソルを非表示
+
+  // カーソルを非表示
+  process.stdout.write('\x1B[?25l');
+  // 最初のメッセージを表示（改行なし）
+  process.stdout.write(`${frames[i]} ${message}\r`);
+  
   loadingInterval = setInterval(() => {
-    process.stdout.write(`\r${frames[i]} ${message}`);
     i = (i + 1) % frames.length;
+    // 現在の行をクリア
+    process.stdout.clearLine(0);
+    // カーソルを先頭に移動
+    process.stdout.cursorTo(0);
+    // アニメーションとメッセージを表示（改行なし）
+    process.stdout.write(`${frames[i]} ${message}\r`);
   }, 80);
 };
 
 // ローディングアニメーションを停止
 const stopLoading = () => {
-  clearInterval(loadingInterval);
+  if (loadingInterval) {
+    clearInterval(loadingInterval);
+    loadingInterval = null;
+  }
   process.stdout.write('\r\x1B[K'); // 現在の行をクリア
   process.stdout.write('\x1B[?25h'); // カーソルを表示
 };
@@ -39,11 +54,36 @@ const stopLoading = () => {
 process.env.FFMPEG_PATH = ffmpeg.path;
 
 // クリップボードからURL取得
-const getClipboardUrls = () => {
+const getClipboardUrls = async () => {
   try {
-    const text = clipboardy.readSync();
-    return text.split('\n').filter(line => line.match(/^https?:\/\//));
+    const text = await clipboardy.default.read();
+    
+    if (!text) {
+      return [];
+    }
+
+    // URLのパターンを改善し、より多くの形式に対応
+    const urlPattern = /(https?:\/\/[^\s<>"]+|www\.[^\s<>"]+)/g;
+    const urls = text.match(urlPattern) || [];
+
+    const validUrls = urls.map(url => {
+      // www.で始まるURLにhttps://を追加
+      if (url.startsWith('www.')) {
+        return 'https://' + url;
+      }
+      return url;
+    }).filter(url => {
+      try {
+        new URL(url);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    return validUrls;
   } catch (e) {
+    console.error('クリップボードの読み取りに失敗しました:', e.message);
     return [];
   }
 };
@@ -57,10 +97,25 @@ const getLastUrls = () => {
   }
 };
 
+// URL入力用の関数
+const readUrl = async (message) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    rl.question(message, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+};
+
 // URL選択
 const selectUrls = async () => {
   startLoading("クリップボードと前回のURLを確認中です...");
-  const clipboardUrls = getClipboardUrls();
+  const clipboardUrls = await getClipboardUrls();
   const lastUrls = getLastUrls();
   stopLoading();
   
@@ -93,19 +148,28 @@ const selectUrls = async () => {
     case 'clipboard':
       return clipboardUrls;
     case 'new':
-      const { url } = await prompts({
-        type: 'text',
-        name: 'url',
-        message: '新しいURLを入力してください'
-      });
-      return [url];
+      const url = await readUrl('新しいURLを入力してください: ');
+      try {
+        new URL(url);
+        return [url];
+      } catch {
+        console.error('無効なURLです');
+        return [];
+      }
     case 'multi':
-      const { urls } = await prompts({
-        type: 'list',
-        name: 'urls',
-        message: '複数のURLを1行ずつ入力してください（Ctrl+Dで確定）'
-      });
-      return urls.split('\n').filter(Boolean);
+      console.log('複数のURLを1行ずつ入力してください（空行で確定）:');
+      const urls = [];
+      while (true) {
+        const url = await readUrl('');
+        if (!url) break;
+        try {
+          new URL(url);
+          urls.push(url);
+        } catch {
+          console.error('無効なURLです:', url);
+        }
+      }
+      return urls;
     default:
       return [];
   }
@@ -338,7 +402,6 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
   ];
 
   try {    
-    // WSL環境での実行に対応
     const command = `yt-dlp ${downloadOptions.join(' ')} "${url}"`;
     const process = exec(command, { 
       cwd: saveDir,
@@ -349,38 +412,21 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
     let currentVideo = '';
     let currentIndex = 0;
     let downloadedFiles = [];
-    let isDownloading = false;  // ダウンロード中の状態を管理するフラグ
     
     process.stdout.on('data', (data) => {
       const lines = data.toString().split('\n');
       for (const line of lines) {
         if (line.includes('[download] Destination:')) {
-          // 新しい動画のダウンロード開始
           const tempFileName = line.split('Destination:')[1].trim();
-          // 一時ファイルの拡張子を除去して基本ファイル名を取得
           currentVideo = tempFileName.replace(/\.f\d+\.mp4$/, '.mp4');
-          // ダウンロード中でない場合のみアニメーションを開始
-          if (!isDownloading) {
-            startLoading(`ダウンロード中: ${currentVideo}`);
-            isDownloading = true;
-          }
+          console.log(`ダウンロード中: ${currentVideo}`);
         } else if (line.includes('has already been downloaded')) {
-          // 既にダウンロード済みのファイル
           const fileName = line.split('"')[1];
           downloadedFiles.push(fileName);
-          if (isDownloading) {
-            stopLoading();
-            isDownloading = false;
-          }
           console.log(`📥 ダウンロード済み: ${fileName}`);
         } else if (line.includes('[Merger] Merging formats into')) {
-          // ダウンロード完了したファイル
           const fileName = line.split('"')[1].replace('"', '');
           downloadedFiles.push(fileName);
-          if (isDownloading) {
-            stopLoading();
-            isDownloading = false;
-          }
           console.log(`📥 ダウンロード完了: ${fileName}`);
         }
       }
