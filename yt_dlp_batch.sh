@@ -1,204 +1,225 @@
 #!/bin/bash
 
 # -------------------------------
-# YouTube動画をバッチでダウンロードするスクリプト
-# - 範囲指定ダウンロード対応
-# - チャンネル / 再生リスト / 単体動画 すべてに対応
-# - Cookie認証に対応
-# - 通常動画 / MP3抽出切り替え可能
-# - ファイル名は playlist_index または "000" で連番化
-# - 動画タイトルとURLをExcel（.xlsx）形式で保存
+# YouTube動画をバッチでダウンロードするスクリプト（関数ベース・インラインコメント付き）
+# - 範囲指定ダウンロード、チャンネル/再生リスト/単体動画対応
+# - Cookie認証対応、動画 or MP3切替、Excel出力対応
 # -------------------------------
 
-trap 'on_interrupt' INT
+trap 'on_interrupt' INT  # Ctrl+Cで中断時の処理を登録
 
 on_interrupt() {
   echo ""
   echo "🛑 中断を検知しました。スクリプトを終了します。"
-  rm -f "$METADATA_LOG"  # もし一時ファイルがあれば削除する
+  rm -f "$METADATA_LOG"  # 中間ファイルがあれば削除
   exit 1
 }
 
-URL_FILE="_last_url.txt"
+# 各種ファイル・変数設定
+URL_FILE="_last_urls.txt"
 COOKIES_OPT="--cookies _cookies.txt"
 ARCHIVE_FILE="_downloaded.txt"
 METADATA_LOG="_metadata.jsonl"
 EXCEL="_video_list.xlsx"
-BATCH_SIZE=30
 
-# コマンド存在チェック
-for cmd in jq fzf yt-dlp python3 xclip; do
-  if ! command -v $cmd &>/dev/null; then
-    echo "❌ 必要なコマンド '$cmd' が見つかりません。インストール方法は README.md を参照してください。"
-    exit 1
+# 必要コマンドの存在確認
+check_dependencies() {
+  for cmd in jq fzf yt-dlp python3 xclip; do
+    if ! command -v "$cmd" &>/dev/null; then
+      echo "❌ 必要なコマンド '$cmd' が見つかりません。README.md を参照してください。"
+      exit 1
+    fi
+  done
+}
+
+# クリップボードのURLを取得（xclip対応）
+get_clipboard_url_list() {
+  local urls=""
+  if command -v xclip &>/dev/null; then
+    urls=$(xclip -selection clipboard -o 2>/dev/null)
   fi
-done
 
-# クリップボードURL取得
-CLIPBOARD_URL=$(xclip -selection clipboard -o 2>/dev/null | tr -d '\r\n[:space:]')
+  # 改行区切りで複数行を処理し、http(s)のみに絞る
+  echo "$urls" | grep -E '^https?://' | sed 's/\r//'  # Windows改行除去
+}
 
-# URL選択肢作成
-OPTIONS=""
-if [ -f "$URL_FILE" ]; then
-  LAST_URL=$(cat "$URL_FILE")
-  OPTIONS="前回のURLを使う($LAST_URL) 新しいURLを入力する"
-else
-  OPTIONS="新しいURLを入力する"
-fi
 
-if echo "$CLIPBOARD_URL" | grep -qE '^https?://'; then
-  OPTIONS="クリップボードのURLを使う($CLIPBOARD_URL) $OPTIONS"
-fi
+# URL選択画面（fzfで選択）
+# 複数URL選択画面（fzfで選択、複数入力にも対応）
+select_urls() {
+  local clipboard_url_list=("$@")
+  local options="新しいURLを入力する\n新しいURLを複数入力する"
 
-# fzf選択
-SELECT=$(printf "%s\n" $OPTIONS | fzf --prompt="▶ " --header="どのURLを使いますか？" --height=30% --border --layout=reverse)
+  # 前回のURL
+  if [ -f "$URL_FILE" ]; then
+    mapfile -t last_urls < "$URL_FILE"
+    [ "${#last_urls[@]}" -gt 0 ] && options="前回のURLを使う (${#last_urls[@]}件)\n$options"
+  fi
 
-# 分岐処理
-if [[ "$SELECT" == "前回のURLを使う"* ]]; then
-  URL="$LAST_URL"
-  echo "🔗 前回のURL（${LAST_URL}）を使います"
-elif [[ "$SELECT" == "クリップボードのURLを使う"* ]]; then
-  URL="$CLIPBOARD_URL"
-  echo "$URL" > "$URL_FILE"
-  echo "🔗 クリップボードのURL（${CLIPBOARD_URL}）を使います"
-else
-  read -p "🔗 新しいURLを入力してください: " URL
-  echo "$URL" > "$URL_FILE"
-fi
+  # クリップボードに1件以上あれば表示に追加
+  if [ "${#clipboard_url_list[@]}" -gt 0 ]; then
+    options="クリップボードのURLを使う (${#clipboard_url_list[@]}件)\n$options"
+  fi
 
-# URL判定と対象名取得
-if [[ "$URL" == *"list="* ]]; then
-  TYPE="playlist"
-elif [[ "$URL" == *"/@"* ]] || [[ "$URL" == *"/channel/"* ]]; then
-  TYPE="channel"
-else
-  TYPE="single"
-fi
+  local selection=$(printf "%b" "$options" | fzf --prompt="▶ " --header="使用するURLを選んでください" --height=30% --border --layout=reverse)
 
-# タイトル取得
-case "$TYPE" in
-  "playlist")
-    i=1
-    while true; do
-      TARGET_NAME=$(yt-dlp --skip-download --print-json --playlist-items $i $COOKIES_OPT "$URL" 2>/dev/null | jq -r '.playlist_title // empty')
-      if [ -n "$TARGET_NAME" ]; then
-        break
-      fi
-      i=$((i + 1))
-      if [ "$i" -ge 50 ]; then
-        echo "⚠️ playlist_titleが見つかりませんでした。50件試行しても失敗。"
-        TARGET_NAME="unknown_playlist"
-        break
-      fi
+  if [ -z "$selection" ]; then
+    echo "⚠️  URLの選択がキャンセルされました。" >&2
+    return 1
+  fi
+
+  if [[ "$selection" == "前回のURLを使う"* ]]; then
+    echo "📋 前回のURL（${#last_urls[@]}件）を使います。" >&2
+    for url in "${last_urls[@]}"; do
+      echo "$url"
     done
-    ;;
-  "channel")
-    i=1
-    while true; do
-      TARGET_NAME=$(yt-dlp --skip-download --print-json --playlist-items $i $COOKIES_OPT "$URL" 2>/dev/null | jq -r '.channel // empty')
-      if [ -n "$TARGET_NAME" ]; then
-        break
-      fi
-      i=$((i + 1))
-      if [ "$i" -ge 50 ]; then
-        echo "⚠️ channel名が見つかりませんでした。50件試行しても失敗。"
-        TARGET_NAME="unknown_channel"
-        break
-      fi
+  elif [[ "$selection" == "クリップボードのURLを使う"* ]]; then
+    echo "📋 クリップボードのURLを使います（${#clipboard_url_list[@]}件）" >&2
+    for url in "${clipboard_url_list[@]}"; do
+      echo "$url"
     done
-    ;;
-  "single")
-    TARGET_NAME=$(yt-dlp --skip-download --print-json $COOKIES_OPT "$URL" 2>/dev/null | jq -r '.title // "unknown_video"')
-    ;;
-esac
-
-# ダウンロード対象表示
-echo "🎯 ダウンロード対象: $TARGET_NAME"
-
-# 保存先ディレクトリ設定
-SAVE_DIR=$(echo "$TARGET_NAME" | sed 's/[\\/:*?"<>|]/_/g')
-mkdir -p "$SAVE_DIR"
-cd "$SAVE_DIR" || exit
-
-# ダウンロードモード選択
-SELECT=$(printf "%s\n" "通常モード（動画）" "MP3音声のみ" | fzf --prompt="▶ " --header="ダウンロードオプションを選択してください" --height=30% --border --layout=reverse)
-
-if [[ "$SELECT" == "MP3音声のみ" ]]; then
-  MODE="2"
-  DOWNLOAD_OPT="-x --audio-format mp3 --audio-quality 0"
-  OUTPUT_TEMPLATE="%(playlist_index,0)03d - %(title)s.%(ext)s"
-  echo "🎵 MP3音声のみダウンロードを選びました"
-else
-  MODE="1"
-  DOWNLOAD_OPT="-f bv*[vcodec^=avc][ext=mp4]+ba[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best --merge-output-format mp4 --embed-thumbnail"
-  OUTPUT_TEMPLATE="%(playlist_index,0)03d - %(title)s.%(ext)s"
-  echo "🎬 通常モード（動画）ダウンロードを選びました"
-fi
-
-# 範囲指定
-if [[ "$TYPE" == "playlist" || "$TYPE" == "channel" ]]; then
-    SELECT=$(printf "%s\n" "すべてダウンロード" "範囲を指定する" | fzf --prompt="▶ " --header="ダウンロード範囲を選択してください" --height=30% --border --layout=reverse)
-  if [[ "$SELECT" == "範囲を指定する" ]]; then
-    echo "📄 プレイリスト情報を取得中..."
-    VIDEO_LIST=()
-    while IFS= read -r line; do
-      VIDEO_LIST+=("$line")
-    done < <(yt-dlp --flat-playlist --print "%(playlist_index)s: %(title)s" $COOKIES_OPT "$URL")
-
-    while true; do
-      START_VIDEO=$(printf "%s\n" "${VIDEO_LIST[@]}" | fzf --prompt="▶ " --header="開始動画を選んでください" --height=30% --border --layout=reverse)
-      START_INDEX=$(echo "$START_VIDEO" | cut -d: -f1)
-
-      END_VIDEO=$(printf "%s\n" "${VIDEO_LIST[@]}" | fzf --prompt="▶ " --header="終了動画を選んでください" --height=30% --border --layout=reverse)
-      END_INDEX=$(echo "$END_VIDEO" | cut -d: -f1)
-
-      if [ "$START_INDEX" -gt "$END_INDEX" ]; then
-        echo "❌ 開始番号が終了番号より大きくなっています。もう一度選択してください。"
-      else
-        RANGE_OPT="--playlist-items ${START_INDEX}-${END_INDEX}"
-        echo "🗂 選択した範囲: ${START_INDEX}-${END_INDEX}"
-        break
-      fi
+  elif [[ "$selection" == "新しいURLを複数入力する" ]]; then
+    echo "📋 複数のYouTube URLを1行ずつ入力してください。" >&2
+    echo "💡 入力が終わったら Ctrl+D（または Ctrl+Z + Enter）で確定します。" >&2
+    mapfile -t lines
+    for line in "${lines[@]}"; do
+      echo "$line"
     done
   else
-    RANGE_OPT=""
-    echo "🗂 全動画ダウンロードを選びました"
+    read -p "🔗 新しいURLを入力してください: " input_url
+    echo "$input_url"
   fi
-else
-  RANGE_OPT=""
-fi
+}
 
-# 動画リスト取得
-echo "📄 動画メタデータを収集中..."
-VIDEO_INFO=$(yt-dlp --skip-download --print-json $RANGE_OPT --yes-playlist $COOKIES_OPT "$URL" | tee "$METADATA_LOG")
-VIDEO_COUNT=$(echo "$VIDEO_INFO" | jq -s 'length')
+# 複数のURLを順に処理（1件ずつ保存・DL・Excel出力）
+process_urls() {
+  local -n urls=$1  # 引数を参照として受け取る
 
-# 実ダウンロード
-COUNT=0
+  # URL保存（複数行）
+  printf "%s\n" "${URLS[@]}" > "$URL_FILE"
 
-while IFS= read -r LINE; do
-  ID=$(echo "$LINE" | jq -r '.id')
-  TITLE=$(echo "$LINE" | jq -r '.title')
-  COUNT=$((COUNT + 1))
-  COUNT_PAD=$(printf "%03d" "$COUNT")
+  for URL in "${urls[@]}"; do
+    echo "🌐 現在処理中のURL: $URL"
 
-  echo "🎬 [$COUNT/$VIDEO_COUNT] $TITLE をダウンロード中..."
+    TARGET_NAME=$(get_target_name "$URL")
+    echo "🎯 ダウンロード対象: $TARGET_NAME"
 
-  yt-dlp \
-    $DOWNLOAD_OPT \
-    -o "${COUNT_PAD} - %(title)s.%(ext)s" \
-    --write-thumbnail \
-    --convert-thumbnails png \
-    --compat-options filename-sanitization \
-    --download-archive "$ARCHIVE_FILE" \
-    $COOKIES_OPT "https://youtu.be/$ID" > /dev/null 2>&1
+    SAVE_DIR=$(echo "$TARGET_NAME" | sed 's/[\\/:*?"<>|]/_/g')
+    mkdir -p "$SAVE_DIR"
+    cd "$SAVE_DIR" || continue
 
-  echo "✅ [$COUNT/$VIDEO_COUNT] $TITLE ダウンロード完了！"
-done <<< "$VIDEO_INFO"
+    DOWNLOAD_OPT=$(select_download_mode)
+    RANGE_OPT=$(get_range_option "$URL")
 
-# PythonでExcel出力
-echo "📘 Excelファイルを保存中..."
-python3 - <<EOF
+    run_download "$URL" "$RANGE_OPT"
+    write_excel
+
+    cd - >/dev/null
+  done
+}
+
+# ダウンロードモード選択（動画 or 音声のみ）
+select_download_mode() {
+  local selection=$(printf "%s\n" "通常モード（動画）" "MP3音声のみ" | fzf --prompt="▶ " --header="ダウンロードオプションを選択してください" --height=30% --border --layout=reverse)
+  if [[ "$selection" == "MP3音声のみ" ]]; then
+    echo "📋 MP3音声のみモードです。" >&2
+    echo "-x --audio-format mp3 --audio-quality 0"
+  else
+    echo "📋 通常モード（動画）です。" >&2
+    echo "-f bv*[vcodec^=avc][ext=mp4]+ba[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best --merge-output-format mp4 --embed-thumbnail"
+  fi
+}
+
+# 保存フォルダ名（チャンネル名・プレイリスト名・動画タイトル）を取得
+get_target_name() {
+  local url="$1"
+
+  if [[ "$url" == *"list="* ]]; then
+    type="playlist"
+  elif [[ "$url" == *"/@"* || "$url" == *"/channel/"* ]]; then
+    type="channel"
+  else
+    type="single"
+  fi
+
+  for i in {1..50}; do
+    case "$type" in
+      playlist)
+        name=$(yt-dlp --skip-download --print-json --playlist-items "$i" $COOKIES_OPT "$url" 2>/dev/null | jq -r '.playlist_title // empty')
+        ;;
+      channel)
+        name=$(yt-dlp --skip-download --print-json --playlist-items "$i" $COOKIES_OPT "$url" 2>/dev/null | jq -r '.channel // empty')
+        ;;
+      single)
+        name=$(yt-dlp --skip-download --print-json $COOKIES_OPT "$url" 2>/dev/null | jq -r '.title // "unknown_video"')
+        echo "$name"
+        return
+        ;;
+    esac
+    [ -n "$name" ] && echo "$name" && return
+  done
+  echo "unknown_${type}"
+}
+
+# ダウンロード範囲をfzfで指定（プレイリスト・チャンネル用）
+get_range_option() {
+  local url="$1"
+  if [[ "$url" == *"list="* || "$url" == *"/@"* || "$url" == *"/channel/"* ]]; then
+    local selection=$(printf "%s\n" "すべてダウンロード" "範囲を指定する" | fzf --prompt="▶ " --header="ダウンロード範囲を選択してください" --height=30% --border --layout=reverse)
+    if [[ "$selection" == "範囲を指定する" ]]; then
+      local video_list=()
+      while IFS= read -r line; do
+        video_list+=("$line")
+      done < <(yt-dlp --flat-playlist --print "%(playlist_index)s: %(title)s" $COOKIES_OPT "$url")
+
+      local start=$(printf "%s\n" "${video_list[@]}" | fzf --prompt="▶ " --header="開始動画を選んでください" --height=30%)
+      local end=$(printf "%s\n" "${video_list[@]}" | fzf --prompt="▶ " --header="終了動画を選んでください" --height=30%)
+      local start_index=$(echo "$start" | cut -d: -f1)
+      local end_index=$(echo "$end" | cut -d: -f1)
+
+      if [ "$start_index" -le "$end_index" ]; then
+        echo "--playlist-items ${start_index}-${end_index}"
+      else
+        echo ""
+      fi
+    fi
+  fi
+}
+
+# ダウンロード実行関数
+run_download() {
+  local url="$1"
+  local range_opt="$2"
+
+  echo "📅 メタデータ取得中..."
+  local video_info=$(yt-dlp --skip-download --print-json $range_opt --yes-playlist $COOKIES_OPT "$url" | tee "$METADATA_LOG")
+  local video_count=$(echo "$video_info" | jq -s 'length')
+  local count=0
+
+  while IFS= read -r line; do
+    local id=$(echo "$line" | jq -r '.id')
+    local title=$(echo "$line" | jq -r '.title')
+    count=$((count + 1))
+    local pad=$(printf "%03d" "$count")
+    echo "🎥 [$count/$video_count] $title をダウンロード中..."
+
+    yt-dlp \
+      $DOWNLOAD_OPT \
+      -o "$pad - %(title)s.%(ext)s" \
+      --write-thumbnail \
+      --convert-thumbnails png \
+      --compat-options filename-sanitization \
+      --download-archive "$ARCHIVE_FILE" \
+      $COOKIES_OPT "https://youtu.be/$id" > /dev/null 2>&1
+
+    echo "✅ [$count/$video_count] $title ダウンロード完了！"
+  done <<< "$video_info"
+}
+
+# Excelファイルを書き出す関数（Python使用）
+write_excel() {
+  echo "📘 Excelファイルを保存中..."
+  python3 - <<EOF
 import pandas as pd, json
 with open("$METADATA_LOG", encoding="utf-8") as f:
     data = [json.loads(l) for l in f]
@@ -209,6 +230,24 @@ df_out = df[["index", "title", "url"]]
 df_out.columns = ["番号", "タイトル", "URL"]
 df_out.to_excel("$EXCEL", index=False, engine="openpyxl")
 EOF
+  rm -f "$METADATA_LOG"
+}
 
-rm -f "$METADATA_LOG"
-echo "✅ 完了！保存先: $SAVE_DIR"
+# ==========================
+# 実行開始
+# ==========================
+
+echo "🚀 スクリプトを開始します"
+check_dependencies
+
+mapfile -t CLIPBOARD_URLS < <(get_clipboard_url_list)
+if ! mapfile -t URLS < <(select_urls "${CLIPBOARD_URLS[@]}"); then
+  echo "❌ URLが選択されなかったため、処理を中止します。" >&2
+  exit 1
+fi
+
+process_urls URLS
+
+echo ""
+echo "✅ すべての処理が完了しました！"
+
