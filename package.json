@@ -1,0 +1,29 @@
+{
+  "name": "youtube-batch-dl",
+  "version": "1.0.0",
+  "description": "このスクリプトは、YouTube のチャンネル・再生リスト・単体動画をまとめてダウンロードできるツールです。 以下の特徴と使い方をまとめます。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gumigumih/youtube-batch-dl.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gumigumih/youtube-batch-dl/issues"
+  },
+  "homepage": "https://github.com/gumigumih/youtube-batch-dl#readme",
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "clipboardy": "^4.0.0",
+    "fs-extra": "^11.3.0",
+    "prompts": "^2.4.2",
+    "xlsx": "^0.18.5",
+    "yt-dlp-wrap": "^2.3.12"
+  }
+}

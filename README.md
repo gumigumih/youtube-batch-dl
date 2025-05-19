@@ -22,19 +22,16 @@
 
 - `yt-dlp`
 - `ffmpeg`
-- `jq`
-- `python3-pip`
-- `pandas` と `openpyxl`
+- `Node.js`（v14 以上推奨）
 
 インストール例（Ubuntu/WSL の場合）:
 
 ```bash
 sudo apt update
-sudo apt install yt-dlp ffmpeg jq python3-pip fzf xclip
-pip3 install pandas openpyxl
+sudo apt install yt-dlp ffmpeg nodejs npm
 ```
 
-インストール例（Ubuntu/WSL の場合）:
+インストール例（Mac の場合）:
 
 ```bash
 # Homebrewがインストールされていない場合は、まずこちらを実行
@@ -42,13 +39,16 @@ pip3 install pandas openpyxl
 
 # Homebrew経由で必要パッケージをインストール
 brew update
-brew install yt-dlp ffmpeg jq python3 fzf xclip
-
-# pip3でPythonパッケージをインストール
-pip3 install pandas openpyxl
+brew install yt-dlp ffmpeg node
 ```
 
-### 2. Cookie ファイル (`_cookies.txt`) を準備
+### 2. 依存パッケージのインストール
+
+```bash
+npm install
+```
+
+### 3. Cookie ファイル (`_cookies.txt`) を準備
 
 YouTube へのログイン状態を使うため、Cookie をエクスポートします。
 
@@ -58,7 +58,7 @@ YouTube へのログイン状態を使うため、Cookie をエクスポート�
 2. YouTube にログイン
 3. YouTube ページを開いた状態で拡張機能アイコンをクリックして Cookie をエクスポート
 4. ダウンロードしたファイルを `_cookies.txt` にリネーム
-5. スクリプト (`yt_dlp_batch.sh`) と同じディレクトリに置く
+5. スクリプト (`index.js`) と同じディレクトリに置く
 
 > ⚠️ Cookie にはアカウント情報が含まれます。第三者に渡さないよう注意してください！
 
@@ -66,11 +66,10 @@ YouTube へのログイン状態を使うため、Cookie をエクスポート�
 
 ## 🚀 使い方
 
-1. ターミナル（bash）でスクリプトを実行：
+1. ターミナルでスクリプトを実行：
 
 ```bash
-chmod +x yt_dlp_batch.sh
-./yt_dlp_batch.sh
+node index.js
 ```
 
 2. 最初に YouTube の URL を聞かれます。
@@ -85,7 +84,7 @@ chmod +x yt_dlp_batch.sh
 
 4. ダウンロード後、
    - `保存フォルダ` に動画ファイルとサムネイル画像（PNG）が保存されます。
-   - ダウンロード内容をまとめた `video_list.xlsx` が作成されます。
+   - ダウンロード内容をまとめた `_video_list.xlsx` が作成されます。
 
 ---
 
@@ -101,10 +100,10 @@ chmod +x yt_dlp_batch.sh
 
 ## ❓ よくあるエラーと対処
 
-| エラー内容                            | 対処方法                                                                          |
-| ------------------------------------- | --------------------------------------------------------------------------------- |
-| `Sign in to confirm you're not a bot` | Cookie ファイルが必要です。手順に従って`_cookies.txt`を用意してください           |
-| `ValueError: No engine for filetype`  | `openpyxl`がインストールされていません。`pip3 install openpyxl`を実行してください |
+| エラー内容                            | 対処方法                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `Sign in to confirm you're not a bot` | Cookie ファイルが必要です。手順に従って`_cookies.txt`を用意してください     |
+| `Error: Cannot find module`           | 依存パッケージがインストールされていません。`npm install`を実行してください |
 
 ---
 
