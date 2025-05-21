@@ -552,6 +552,7 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
         }
       }
 
+      const targetName = path.basename(saveDir);
       console.log(`📥 ${targetVideos.length}件の動画をダウンロードします`);
       
       for (const video of targetVideos) {
@@ -562,14 +563,23 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
           currentIndex++;
         }
       }
+
+      stopLoading();
+      console.log(`✅ ${targetName} のダウンロードが完了しました！`);
+      writeExcel(saveDir);
     } else {
       // 単一動画の場合
-      await downloadSingleVideo(url, mode, saveDir, currentIndex);
-    }
+      startLoading("動画情報を取得中です...");
+      const { stdout } = await execPromise(`yt-dlp --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
+      const videoInfo = JSON.parse(stdout.trim());
+      stopLoading();
 
-    stopLoading();
-    console.log(`✅ ${url} のダウンロードが完了しました！`);
-    writeExcel(saveDir);
+      await downloadSingleVideo(url, mode, saveDir, currentIndex);
+
+      stopLoading();
+      console.log(`✅ ${videoInfo.title} のダウンロードが完了しました！`);
+      writeExcel(saveDir);
+    }
   } catch (e) {
     console.error(`\n❌ ${url} のダウンロードに失敗しました:`, e.message);
   }
@@ -604,21 +614,29 @@ process.on('SIGINT', () => {
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
     startLoading("動画のタイトルと情報を取得中です...");
-    const targetName = await getTargetName(url);
-    stopLoading();
-    const saveDir = createSaveDir(targetName);
     
-    if (url.includes('list=') || url.includes('/@') || url.includes('/channel/')) {
+    // 単体動画の場合は動画情報を取得
+    if (!url.includes('list=') && !url.includes('/@') && !url.includes('/channel/')) {
+      const { stdout } = await execPromise(`yt-dlp --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
+      const videoInfo = JSON.parse(stdout.trim());
+      const targetName = videoInfo.title;
+      stopLoading();
+      const saveDir = createSaveDir(targetName);
+      
+      await runDownload(url, mode, saveDir, '');
+    } else {
+      // プレイリストやチャンネルの場合
+      const targetName = await getTargetName(url);
+      stopLoading();
+      const saveDir = createSaveDir(targetName);
+      
       if (i === 0 || !applyToAll) {
         const rangeResult = await selectDownloadRange(url, i === 0, urls.length);
         rangeOption = rangeResult.option;
         applyToAll = rangeResult.applyToAll;
       }
-    } else {
-      // 通常の動画の場合は範囲選択をスキップ
-      rangeOption = '';
+      
+      await runDownload(url, mode, saveDir, rangeOption);
     }
-    
-    await runDownload(url, mode, saveDir, rangeOption);
   }
 })();
