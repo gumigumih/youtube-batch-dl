@@ -332,7 +332,7 @@ const getPlaylistInfo = async (url) => {
     })
     .filter(info => info !== null);
 
-  return videoInfos.map((v, i) => `${i + 1}: ${v.title}`);
+  return videoInfos;
 };
 
 // ダウンロード範囲を選択
@@ -376,7 +376,7 @@ const selectRangeForUrl = async (url) => {
     type: 'select',
     name: 'start',
     message: '開始動画を選んでください',
-    choices: videoList.map(v => ({ title: v, value: v.split(':')[0] }))
+    choices: videoList.map(v => ({ title: v.title, value: v.id }))
   });
 
   // 終了動画を選択
@@ -384,7 +384,7 @@ const selectRangeForUrl = async (url) => {
     type: 'select',
     name: 'end',
     message: '終了動画を選んでください',
-    choices: videoList.map(v => ({ title: v, value: v.split(':')[0] }))
+    choices: videoList.map(v => ({ title: v.title, value: v.id }))
   });
 
   const startIndex = parseInt(startResponse.start);
@@ -432,8 +432,8 @@ const writeExcel = (saveDir) => {
   }
 };
 
-// yt-dlpでダウンロード
-const runDownload = async (url, mode, saveDir, rangeOption) => {
+// 単一動画のダウンロード
+const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
   const options = mode === 'mp3' 
     ? ['-x', '--audio-format', 'mp3', '--audio-quality', '0'] 
     : ['-f', '"bestvideo+bestaudio/best"', '--merge-output-format', 'mp4', '--embed-thumbnail'];
@@ -441,8 +441,7 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
   // ダウンロードオプション
   const downloadOptions = [
     ...options,
-    ...(rangeOption ? [rangeOption] : []),
-    '-o', '"%(title)s.%(ext)s"',
+    '-o', `"${String(currentIndex).padStart(3, '0')} - %(title)s.%(ext)s"`,
     '--write-thumbnail',
     '--convert-thumbnails', 'png',
     '--compat-options', 'filename-sanitization',
@@ -468,7 +467,6 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
     
     let errorOutput = '';
     let currentVideo = '';
-    let currentIndex = 0;
     let downloadedFiles = [];
     
     process.stdout.on('data', (data) => {
@@ -476,12 +474,18 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
       for (const line of lines) {
         if (line.includes('[download] Destination:')) {
           const tempFileName = line.split('Destination:')[1].trim();
-          currentVideo = tempFileName.replace(/\.f\d+\.mp4$/, '.mp4');
-          console.log(`ダウンロード中: ${currentVideo}`);
+          // 中間ファイルの場合は通知を表示しない
+          if (!tempFileName.match(/\.f\d+\.(webm|mp4)$/)) {
+            currentVideo = tempFileName.replace(/\.f\d+\.mp4$/, '.mp4');
+            console.log(`ダウンロード中: ${currentVideo}`);
+          }
         } else if (line.includes('has already been downloaded')) {
           const fileName = line.split('"')[1];
-          downloadedFiles.push(fileName);
-          console.log(`📥 ダウンロード済み: ${fileName}`);
+          // 中間ファイルの場合は通知を表示しない
+          if (!fileName.match(/\.f\d+\.(webm|mp4)$/)) {
+            downloadedFiles.push(fileName);
+            console.log(`📥 ダウンロード済み: ${fileName}`);
+          }
         } else if (line.includes('[Merger] Merging formats into')) {
           const fileName = line.split('"')[1].replace('"', '');
           downloadedFiles.push(fileName);
@@ -504,20 +508,63 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
       });
     });
 
-    // ダウンロード完了後にファイル名を変更
-    for (const file of downloadedFiles) {
-      try {
-        const ext = path.extname(file);
-        const baseName = path.basename(file, ext);
-        currentIndex++;
-        const newName = `${String(currentIndex).padStart(3, '0')} - ${baseName}${ext}`;
-        
-        // ファイル名を変更
-        fs.renameSync(path.join(saveDir, file), path.join(saveDir, newName));
-        console.log(`✅ リネーム完了: ${newName}`);
-      } catch (e) {
-        console.error(`❌ リネーム失敗: ${file}`, e.message);
+    return true;
+  } catch (e) {
+    console.error(`\n❌ ${url} のダウンロードに失敗しました:`, e.message);
+    return false;
+  }
+};
+
+// yt-dlpでダウンロード
+const runDownload = async (url, mode, saveDir, rangeOption) => {
+  // 現在のインデックスを取得
+  let currentIndex = 1;
+  try {
+    const files = fs.readdirSync(saveDir);
+    const numbers = files
+      .map(file => {
+        const match = file.match(/^(\d{3}) - /);
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter(num => !isNaN(num));
+    if (numbers.length > 0) {
+      currentIndex = Math.max(...numbers) + 1;
+    }
+  } catch (e) {
+    // ディレクトリが存在しない場合は1から開始
+  }
+
+  try {
+    // プレイリストやチャンネルの場合
+    if (url.includes('list=') || url.includes('/@') || url.includes('/channel/')) {
+      startLoading("プレイリスト情報を取得中です...");
+      const videoInfos = await getPlaylistInfo(url);
+      stopLoading();
+
+      // 範囲指定がある場合、その範囲の動画のみを処理
+      let targetVideos = videoInfos;
+      if (rangeOption) {
+        const rangeMatch = rangeOption.match(/--playlist-items (\d+)-(\d+)/);
+        if (rangeMatch) {
+          const start = parseInt(rangeMatch[1]);
+          const end = parseInt(rangeMatch[2]);
+          targetVideos = videoInfos.slice(start - 1, end);
+        }
       }
+
+      console.log(`📥 ${targetVideos.length}件の動画をダウンロードします`);
+      
+      for (const video of targetVideos) {
+        const videoUrl = `https://youtu.be/${video.id}`;
+        console.log(`\n🎥 ${video.title} をダウンロード中...`);
+        const success = await downloadSingleVideo(videoUrl, mode, saveDir, currentIndex);
+        if (success) {
+          currentIndex++;
+        }
+      }
+    } else {
+      // 単一動画の場合
+      await downloadSingleVideo(url, mode, saveDir, currentIndex);
     }
 
     stopLoading();
