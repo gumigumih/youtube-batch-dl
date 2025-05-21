@@ -97,6 +97,16 @@ const getLastUrls = () => {
   }
 };
 
+// URLを保存する
+const saveUrls = (urls) => {
+  try {
+    fs.writeFileSync('_last_urls.txt', urls.join('\n'), 'utf8');
+    console.log('✅ URLを保存しました');
+  } catch (e) {
+    console.error('❌ URLの保存に失敗しました:', e.message);
+  }
+};
+
 // URL入力用の関数
 const readUrl = async (message) => {
   const rl = readline.createInterface({
@@ -426,7 +436,7 @@ const writeExcel = (saveDir) => {
 const runDownload = async (url, mode, saveDir, rangeOption) => {
   const options = mode === 'mp3' 
     ? ['-x', '--audio-format', 'mp3', '--audio-quality', '0'] 
-    : ['-f', '"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"', '--merge-output-format', 'mp4', '--embed-thumbnail'];
+    : ['-f', '"bestvideo+bestaudio/best"', '--merge-output-format', 'mp4', '--embed-thumbnail'];
 
   // ダウンロードオプション
   const downloadOptions = [
@@ -530,6 +540,11 @@ process.on('SIGINT', () => {
   // URL選択
   const urls = await selectUrls();
   console.log('選択されたURL:', urls);
+
+  // 選択されたURLを保存
+  if (urls.length > 0) {
+    saveUrls(urls);
+  }
 
   // ダウンロードモード選択
   const mode = await selectDownloadMode();

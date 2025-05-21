@@ -69,7 +69,7 @@ YouTube へのログイン状態を使うため、Cookie をエクスポート�
 1. ターミナルでスクリプトを実行：
 
 ```bash
-node index.js
+node downloader.js
 ```
 
 2. 最初に YouTube の URL を聞かれます。
