@@ -9,9 +9,18 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 const ffmpeg = require('@ffmpeg-installer/ffmpeg');
 const readline = require('readline');
+const cliProgress = require('cli-progress');
 
 // ローディングアニメーション用の変数
 let loadingInterval = null;
+
+// プログレスバーのインスタンス
+const progressBar = new cliProgress.SingleBar({
+  format: 'ダウンロード進捗 |{bar}| {percentage}% | {value}/{total} MB | {title}',
+  barCompleteChar: '\u2588',
+  barIncompleteChar: '\u2591',
+  hideCursor: true
+});
 
 // ローディングアニメーションを開始
 const startLoading = (message) => {
@@ -131,14 +140,14 @@ const selectUrls = async () => {
   
   const options = [];
 
-  // 前回のURLがあれば追加
-  if (lastUrls.length > 0) {
-    options.push({ title: `前回のURLを使う (${lastUrls.length}件)`, value: 'last' });
-  }
-
   // クリップボードのURLがあれば追加
   if (clipboardUrls.length > 0) {
     options.push({ title: `クリップボードのURLを使う (${clipboardUrls.length}件)`, value: 'clipboard' });
+  }
+
+  // 前回のURLがあれば追加
+  if (lastUrls.length > 0) {
+    options.push({ title: `前回のURLを使う (${lastUrls.length}件)`, value: 'last' });
   }
 
   // 新規入力オプション
@@ -447,7 +456,7 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
     '--compat-options', 'filename-sanitization',
     '--download-archive', '_downloaded.txt',
     '--newline',
-    '--progress-template', '"%(progress._percent_str)s"',
+    '--progress-template', '"%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s"',
     '--no-warnings',
     '--no-call-home',
     '--no-check-certificate'
@@ -468,6 +477,10 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
     let errorOutput = '';
     let currentVideo = '';
     let downloadedFiles = [];
+    let totalBytes = 0;
+    let downloadedBytes = 0;
+    let currentTitle = '';
+    let progressCompleted = false;  // 進捗完了フラグを追加
     
     process.stdout.on('data', (data) => {
       const lines = data.toString().split('\n');
@@ -477,7 +490,9 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
           // 中間ファイルの場合は通知を表示しない
           if (!tempFileName.match(/\.f\d+\.(webm|mp4)$/)) {
             currentVideo = tempFileName.replace(/\.f\d+\.mp4$/, '.mp4');
-            console.log(`ダウンロード中: ${currentVideo}`);
+            currentTitle = path.basename(currentVideo, path.extname(currentVideo));
+            console.log(`\n🎥 ${currentTitle} をダウンロード中...`);
+            progressCompleted = false;  // 新しい動画の開始時にフラグをリセット
           }
         } else if (line.includes('has already been downloaded')) {
           const fileName = line.split('"')[1];
@@ -485,11 +500,64 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
           if (!fileName.match(/\.f\d+\.(webm|mp4)$/)) {
             downloadedFiles.push(fileName);
             console.log(`📥 ダウンロード済み: ${fileName}`);
+            if (progressBar.isActive) {
+              progressBar.stop();
+            }
+            progressCompleted = true;  // ダウンロード済みの場合は完了フラグを設定
           }
         } else if (line.includes('[Merger] Merging formats into')) {
           const fileName = line.split('"')[1].replace('"', '');
           downloadedFiles.push(fileName);
+          if (progressBar.isActive) {
+            progressBar.stop();
+          }
           console.log(`📥 ダウンロード完了: ${fileName}`);
+          progressCompleted = true;  // マージ完了時に完了フラグを設定
+        } else if (line.includes('%') && !progressCompleted) {  // 進捗完了フラグをチェック
+          // 進捗情報の解析（複数のパターンに対応）
+          const progressPatterns = [
+            /(\d+\.\d+)% of\s+(\d+\.\d+)([KMG]iB)/,  // 通常の進捗（iB単位）
+            /(\d+\.\d+)% of\s+(\d+\.\d+)([KMG]B)/,   // 通常の進捗（B単位）
+            /\[download\]\s+(\d+\.\d+)%/,            // [download]付きパーセンテージのみ
+            /(\d+\.\d+)%/                            // パーセンテージのみ
+          ];
+
+          for (const pattern of progressPatterns) {
+            const progressMatch = line.match(pattern);
+            if (progressMatch) {
+              const percent = parseFloat(progressMatch[1]);
+              
+              // サイズ情報がある場合
+              if (progressMatch[2] && progressMatch[3]) {
+                const size = parseFloat(progressMatch[2]);
+                const unit = progressMatch[3];
+                const sizeInMB = size * (unit === 'GiB' || unit === 'GB' ? 1024 : unit === 'KiB' || unit === 'KB' ? 0.001 : 1);
+                
+                if (!progressBar.isActive) {
+                  progressBar.start(Math.ceil(sizeInMB), 0, { title: currentTitle });
+                }
+                
+                progressBar.update(Math.ceil(sizeInMB * percent / 100), { title: currentTitle });
+                
+                // 100%に達したら完了フラグを設定
+                if (percent >= 100) {
+                  progressCompleted = true;
+                }
+              } else {
+                // パーセンテージのみの場合
+                if (!progressBar.isActive) {
+                  progressBar.start(100, 0, { title: currentTitle });
+                }
+                progressBar.update(Math.ceil(percent), { title: currentTitle });
+                
+                // 100%に達したら完了フラグを設定
+                if (percent >= 100) {
+                  progressCompleted = true;
+                }
+              }
+              break;
+            }
+          }
         }
       }
     });
@@ -500,6 +568,9 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
 
     await new Promise((resolve, reject) => {
       process.on('close', (code) => {
+        if (progressBar.isActive) {
+          progressBar.stop();
+        }
         if (code === 0) {
           resolve();
         } else {
@@ -613,6 +684,17 @@ process.on('SIGINT', () => {
   // 各URLに対して処理
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
+    
+    // プレイリストやチャンネルの場合、範囲選択を先に行う
+    if (url.includes('list=') || url.includes('/@') || url.includes('/channel/')) {
+      if (i === 0 || !applyToAll) {
+        const rangeResult = await selectDownloadRange(url, i === 0, urls.length);
+        rangeOption = rangeResult.option;
+        applyToAll = rangeResult.applyToAll;
+      }
+    }
+
+    // 情報取得とフォルダ作成
     startLoading("動画のタイトルと情報を取得中です...");
     
     // 単体動画の場合は動画情報を取得
@@ -629,12 +711,6 @@ process.on('SIGINT', () => {
       const targetName = await getTargetName(url);
       stopLoading();
       const saveDir = createSaveDir(targetName);
-      
-      if (i === 0 || !applyToAll) {
-        const rangeResult = await selectDownloadRange(url, i === 0, urls.length);
-        rangeOption = rangeResult.option;
-        applyToAll = rangeResult.applyToAll;
-      }
       
       await runDownload(url, mode, saveDir, rangeOption);
     }
