@@ -10,6 +10,59 @@ const ffmpeg = require('@ffmpeg-installer/ffmpeg');
 const readline = require('readline');
 const cliProgress = require('cli-progress');
 
+// yt-dlpのパスを取得する関数
+const getYtDlpPath = () => {
+  // Electron環境かどうかを判定
+  if (typeof process !== 'undefined' && process.versions && process.versions.electron) {
+    // Electron環境の場合、extraResourcesから取得
+    const { app } = require('electron');
+    if (app && app.isPackaged) {
+      return path.join(process.resourcesPath, 'yt-dlp', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+    }
+  }
+  // 開発環境の場合、システムのyt-dlpを使用
+  return 'yt-dlp';
+};
+
+// ダウンロード用の専用フォルダを取得
+const getDownloadPath = () => {
+  if (typeof process !== 'undefined' && process.versions && process.versions.electron) {
+    const { app } = require('electron');
+    if (app) {
+      return path.join(app.getPath('downloads'), 'YouTube-Downloader');
+    }
+  }
+  // 開発環境の場合、カレントディレクトリを使用
+  return path.join(process.cwd(), 'Downloads');
+};
+
+// カスタムダウンロードパスを取得
+const getCustomDownloadPath = () => {
+  try {
+    if (typeof process !== 'undefined' && process.versions && process.versions.electron) {
+      const { app } = require('electron');
+      if (app) {
+        const dataPath = path.join(app.getPath('downloads'), 'YouTube-Downloader');
+        const configPath = path.join(dataPath, '_download_path.txt');
+        
+        if (fs.existsSync(configPath)) {
+          const customPath = fs.readFileSync(configPath, 'utf8').trim();
+          console.log('Using custom download path:', customPath);
+          return customPath;
+        } else {
+          const defaultPath = getDownloadPath();
+          console.log('Using default download path:', defaultPath);
+          return defaultPath;
+        }
+      }
+    }
+    return getDownloadPath();
+  } catch (e) {
+    console.error('Get custom download path error:', e.message);
+    return getDownloadPath();
+  }
+};
+
 // ローディングアニメーション用の変数
 let loadingInterval = null;
 
@@ -220,7 +273,22 @@ const selectDownloadMode = async () => {
 // クッキーファイルの確認と処理
 const checkCookiesFile = async () => {
   try {
-    if (!fs.existsSync('_cookies.txt')) {
+    // 開発環境とビルド環境でパスを分ける
+    const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+    const basePath = isDev ? process.cwd() : path.join(process.resourcesPath, 'data');
+    
+    // クッキーファイルが存在する場合
+    if (fs.existsSync(path.join(basePath, '_cookies.txt'))) {
+      return true;
+    }
+    
+    // ブラウザ設定ファイルが存在する場合
+    if (fs.existsSync(path.join(basePath, '_browser_cookies.txt'))) {
+      return true;
+    }
+    
+    // CLIモードの場合のみプロンプトを表示
+    if (require.main === module) {
       console.log('⚠️ クッキーファイルが見つかりません。');
       const response = await prompts({
         type: 'select',
@@ -246,7 +314,8 @@ const checkCookiesFile = async () => {
         });
 
         try {
-          await execPromise(`yt-dlp --cookies-from-browser ${browserResponse.browser} --cookies _cookies.txt`);
+          const ytDlpPath = getYtDlpPath();
+          await execPromise(`"${ytDlpPath}" --cookies-from-browser ${browserResponse.browser} --cookies _cookies.txt`);
           console.log('✅ クッキーファイルを作成しました');
           return true;
         } catch (e) {
@@ -254,9 +323,9 @@ const checkCookiesFile = async () => {
           return false;
         }
       }
-      return false;
     }
-    return true;
+    
+    return false;
   } catch (e) {
     console.error('❌ クッキーファイルの確認中にエラーが発生しました:', e.message);
     return false;
@@ -279,7 +348,8 @@ const getTargetName = async (url) => {
       options.push('--cookies', '_cookies.txt');
     }
 
-    const { stdout } = await execPromise(`yt-dlp ${options.join(' ')} "${url}"`);
+    const ytDlpPath = getYtDlpPath();
+    const { stdout } = await execPromise(`"${ytDlpPath}" ${options.join(' ')} "${url}"`);
     
     // 複数のJSONオブジェクトを処理
     const jsonObjects = stdout.trim().split('\n').map(line => {
@@ -355,7 +425,11 @@ const sanitizeFileName = (fileName) => {
 
 // 保存ディレクトリ作成
 const createSaveDir = (dirName) => {
-  const saveDir = sanitizeFileName(dirName);
+  const sanitizedName = sanitizeFileName(dirName);
+  const downloadPath = getCustomDownloadPath();
+  const saveDir = path.join(downloadPath, sanitizedName);
+  
+  // 親ディレクトリも含めて作成
   fs.mkdirSync(saveDir, { recursive: true });
   console.log(`📁 フォルダを作成しました: ${saveDir}`);
   return saveDir;
@@ -363,7 +437,8 @@ const createSaveDir = (dirName) => {
 
 // プレイリスト情報を取得
 const getPlaylistInfo = async (url) => {
-  const { stdout } = await execPromise(`yt-dlp --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
+  const ytDlpPath = getYtDlpPath();
+  const { stdout } = await execPromise(`"${ytDlpPath}" --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
   
   // 複数のJSONオブジェクトを処理
   const videoInfos = stdout.trim().split('\n')
@@ -497,13 +572,29 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
     '--no-check-certificate'
   ];
 
+  // 開発環境とビルド環境でパスを分ける
+  const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+  const basePath = isDev ? process.cwd() : path.join(process.resourcesPath, 'data');
+  
   // クッキーファイルが存在する場合のみ追加
   if (await checkCookiesFile()) {
-    downloadOptions.push('--cookies', '_cookies.txt');
+    downloadOptions.push('--cookies', path.join(basePath, '_cookies.txt'));
+  } else {
+    // ブラウザからクッキーを取得する設定がある場合
+    try {
+      const browserCookiesPath = path.join(basePath, '_browser_cookies.txt');
+      if (fs.existsSync(browserCookiesPath)) {
+        const browser = fs.readFileSync(browserCookiesPath, 'utf8').trim();
+        downloadOptions.push('--cookies-from-browser', browser);
+      }
+    } catch (e) {
+      // ブラウザ設定ファイルの読み込みに失敗した場合は無視
+    }
   }
 
   try {    
-    const command = `yt-dlp ${downloadOptions.join(' ')} "${url}"`;
+    const ytDlpPath = getYtDlpPath();
+    const command = `"${ytDlpPath}" ${downloadOptions.join(' ')} "${url}"`;
     const process = exec(command, { 
       cwd: saveDir,
       shell: '/bin/bash'
@@ -721,7 +812,8 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
     } else {
       // 単一動画の場合
       startLoading("動画情報を取得中です...");
-      const { stdout } = await execPromise(`yt-dlp --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
+      const ytDlpPath = getYtDlpPath();
+      const { stdout } = await execPromise(`"${ytDlpPath}" --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
       const videoInfo = JSON.parse(stdout.trim());
       stopLoading();
 
@@ -828,7 +920,8 @@ if (require.main === module) {
       
       // 単体動画の場合は動画情報を取得
       if (!url.includes('list=') && !url.includes('/@') && !url.includes('/channel/')) {
-        const { stdout } = await execPromise(`yt-dlp --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
+        const ytDlpPath = getYtDlpPath();
+        const { stdout } = await execPromise(`"${ytDlpPath}" --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
         const videoInfo = JSON.parse(stdout.trim());
         const targetName = videoInfo.title;
         stopLoading();

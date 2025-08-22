@@ -60,10 +60,25 @@
     },
     "files": [
       "main.js",
-      "dist/**/*",
+      "index.html",
+      "renderer.js",
+      "styles.css",
       "downloader.js",
       "node_modules/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "data",
+        "to": "data",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "bin",
+        "to": "yt-dlp",
+        "filter": ["**/*"]
+      }
+    ],
+    "afterPack": "./scripts/after-pack.js",
     "mac": {
       "category": "public.app-category.utilities"
     },

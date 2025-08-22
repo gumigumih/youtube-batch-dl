@@ -28,7 +28,7 @@
     <section class="max-w-3xl mx-auto px-6">
         <div class="flex gap-4 mb-6">
             <div class="flex-1 w-full">
-                <textarea id="urlInput" class="w-full min-h-[120px] max-h-[180px] p-5 border-2 border-white/20 rounded-xl text-sm font-mono resize-y transition-all duration-300 focus:border-purple-400 focus:outline-none bg-white/95 backdrop-blur-sm shadow-lg" placeholder="YouTubeのURLを入力してください（複数の場合は改行区切り）"></textarea>
+                <textarea id="urlInput" class="w-full p-3 border-2 border-white/20 rounded-xl text-sm font-mono resize-none transition-all duration-300 focus:border-purple-400 focus:outline-none bg-white/95 backdrop-blur-sm shadow-lg" placeholder="YouTubeのURLを入力してください（複数の場合は改行区切り）" style="field-sizing: content;"></textarea>
             </div>
         </div>
         
@@ -62,21 +62,30 @@
                             </h2>
                             
                             <div class="space-y-8">
-                                <!-- 認証設定 -->
+                                <!-- ダウンロードフォルダ設定 -->
                                 <div>
-                                    <label class="block text-gray-700 text-sm font-semibold mb-4 uppercase tracking-wide">認証設定</label>
-                                    <div class="flex flex-wrap gap-3 items-center">
-                                        <button id="checkCookiesBtn" class="group relative bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 font-medium py-3 px-5 rounded-xl transition-all duration-300 flex items-center gap-2 hover:scale-105 hover:shadow-lg border border-gray-300/50">
-                                            <div class="absolute inset-0 bg-gradient-to-r from-gray-200/50 to-gray-300/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                                            <i class="fas fa-lock relative z-10 group-hover:scale-110 transition-transform duration-300"></i>
-                                            <span class="relative z-10">クッキー確認</span>
-                                        </button>
-                                        <button id="getCookiesBtn" class="group relative bg-gradient-to-r from-emerald-100 to-emerald-200 hover:from-emerald-200 hover:to-emerald-300 text-emerald-700 font-medium py-3 px-5 rounded-xl transition-all duration-300 flex items-center gap-2 hover:scale-105 hover:shadow-lg border border-emerald-300/50">
-                                            <div class="absolute inset-0 bg-gradient-to-r from-emerald-200/50 to-emerald-300/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                                            <i class="fas fa-check-circle relative z-10 group-hover:scale-110 transition-transform duration-300"></i>
-                                            <span class="relative z-10">ブラウザから取得</span>
-                                        </button>
-                                        <span id="cookiesStatus" class="text-sm text-gray-600 bg-gradient-to-r from-gray-100 to-gray-200 px-4 py-2 rounded-xl font-medium border border-gray-300/50 shadow-sm">未確認</span>
+                                    <label class="block text-gray-700 text-sm font-semibold mb-4 uppercase tracking-wide">ダウンロードフォルダ</label>
+                                    <div class="p-4 rounded-xl bg-gray-50 border border-gray-200">
+                                        <div class="flex items-center gap-3 mb-3">
+                                            <div class="bg-gradient-to-r from-green-100 to-green-200 p-3 rounded-xl shadow-sm">
+                                                <i class="fas fa-folder text-green-600"></i>
+                                            </div>
+                                            <div class="flex-1">
+                                                <span class="text-gray-800 font-semibold">ダウンロード保存先</span>
+                                                <p class="text-gray-500 text-sm">動画ファイルの保存先フォルダを指定できます</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <input type="text" id="downloadPathInput" readonly class="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 font-mono text-sm" placeholder="ダウンロードフォルダを選択してください">
+                                            <button id="selectDownloadPathBtn" class="group relative bg-gradient-to-r from-green-100 to-green-200 hover:from-green-200 hover:to-green-300 text-green-700 font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center gap-2 hover:scale-105 hover:shadow-lg border border-green-300/50">
+                                                <i class="fas fa-folder-open relative z-10 group-hover:scale-110 transition-transform duration-300"></i>
+                                                <span class="relative z-10">選択</span>
+                                            </button>
+                                        </div>
+                                        <div class="mt-2 text-xs text-gray-500">
+                                            <i class="fas fa-info-circle mr-1"></i>
+                                            デフォルト: <span id="defaultDownloadPath">ダウンロードフォルダ/YouTube-Downloader</span>
+                                        </div>
                                     </div>
                                 </div>
                                 
@@ -94,8 +103,57 @@
                                         </div>
                                     </div>
                                 </div>
-
                                 
+                                <!-- 認証設定 -->
+                                <div>
+                                    <label class="block text-gray-700 text-sm font-semibold mb-4 uppercase tracking-wide">認証設定</label>
+                                    <div class="p-4 rounded-xl bg-gray-50 border border-gray-200">
+                                        <div class="flex items-start gap-3 mb-4">
+                                            <div class="bg-gradient-to-r from-blue-100 to-blue-200 p-3 rounded-xl shadow-sm">
+                                                <i class="fas fa-lock text-blue-600"></i>
+                                            </div>
+                                            <div class="flex-1">
+                                                <span class="text-gray-800 font-semibold">YouTube認証</span>
+                                                <p class="text-gray-500 text-sm">年齢制限動画や限定公開動画をダウンロードするには、YouTubeにログインした状態のクッキーファイルが必要です。</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 手順 -->
+                                        <div class="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                            <h5 class="font-medium text-blue-800 mb-2 flex items-center gap-2">
+                                                <i class="fas fa-list-ul text-blue-600"></i>
+                                                手順
+                                            </h5>
+                                            <ol class="text-blue-700 text-sm space-y-1">
+                                                <li>1. Chromeで <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" class="underline hover:text-blue-800">Get cookies.txt LOCALLY</a> をインストール</li>
+                                                <li>2. ChromeでYouTubeにログイン</li>
+                                                <li>3. Chromeの拡張機能アイコンをクリックしてクッキーをエクスポート</li>
+                                                <li>4. ファイル名を「_cookies.txt」に変更</li>
+                                                <li>5. 「ダウンロードフォルダを開く」ボタンをクリック</li>
+                                                <li>6. 開いたダウンロードフォルダに「_cookies.txt」ファイルを配置</li>
+                                                <li>7. 「クッキー確認」ボタンで状態を確認</li>
+                                            </ol>
+                                        </div>
+                                        
+                                        <!-- 操作ボタン -->
+                                        <div class="flex flex-wrap gap-3 items-center mb-3">
+                                            <button id="checkCookiesBtn" class="group relative bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center gap-2 hover:scale-105 hover:shadow-lg border border-gray-300/50">
+                                                <i class="fas fa-lock relative z-10 group-hover:scale-110 transition-transform duration-300"></i>
+                                                <span class="relative z-10">クッキー確認</span>
+                                            </button>
+                                            <button id="openCookiesDirBtn" class="group relative bg-gradient-to-r from-blue-100 to-blue-200 hover:from-blue-200 hover:to-blue-300 text-blue-700 font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center gap-2 hover:scale-105 hover:shadow-lg border border-blue-300/50">
+                                                <i class="fas fa-folder-open relative z-10 group-hover:scale-110 transition-transform duration-300"></i>
+                                                <span class="relative z-10">ダウンロードフォルダを開く</span>
+                                            </button>
+                                        </div>
+                                        
+                                        <!-- クッキー状態表示 -->
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium text-gray-700">認証状態:</span>
+                                            <span id="cookiesStatus" class="text-sm text-gray-600">未確認</span>
+                                        </div>
+                                    </div>
+                                </div>
                                 
                             </div>
                         </section>

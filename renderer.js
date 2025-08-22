@@ -1,7 +1,8 @@
 const { ipcRenderer } = require('electron');
 
 // DOM要素の取得
-let urlInput, checkCookiesBtn, getCookiesBtn, cookiesStatus, downloadBtn;
+let urlInput, checkCookiesBtn, openCookiesDirBtn, cookiesStatus, downloadBtn;
+let downloadPathInput, selectDownloadPathBtn;
 let settingsPanel, videoSelectionPanel, progressPanel;
        let videoListContainer, loadVideoListBtn, selectAllBtn, selectedCount;
        let startDownloadBtn, progressFill, progressText, currentFile, progressCount;
@@ -11,9 +12,13 @@ function getElements() {
     console.log('getElements called');
     urlInput = document.getElementById('urlInput');
     checkCookiesBtn = document.getElementById('checkCookiesBtn');
-    getCookiesBtn = document.getElementById('getCookiesBtn');
+    openCookiesDirBtn = document.getElementById('openCookiesDirBtn');
     cookiesStatus = document.getElementById('cookiesStatus');
     downloadBtn = document.getElementById('downloadBtn');
+    
+    // ダウンロードフォルダ設定要素
+    downloadPathInput = document.getElementById('downloadPathInput');
+    selectDownloadPathBtn = document.getElementById('selectDownloadPathBtn');
     
     console.log('urlInput:', urlInput);
     console.log('downloadBtn:', downloadBtn);
@@ -80,6 +85,12 @@ async function initializeApp() {
     // クッキーファイルの確認
     await checkCookiesFile();
     
+    // ダウンロードパスの初期化
+    await initializeDownloadPath();
+    
+    // デフォルトパスの表示
+    await updateDefaultPathDisplay();
+    
     // 前回のURLを読み込み
     const lastUrls = await ipcRenderer.invoke('get-last-urls');
     if (lastUrls.length > 0) {
@@ -100,16 +111,52 @@ function setupEventListeners() {
         });
     }
 
-    // ブラウザからクッキー取得
-    if (getCookiesBtn) {
-        getCookiesBtn.addEventListener('click', async () => {
-            addLog('🌐 Chromeからクッキーを取得中...', 'info');
-            const success = await ipcRenderer.invoke('get-cookies-from-browser', 'chrome');
-            if (success) {
-                addLog('✅ クッキーファイルを作成しました', 'success');
-                await checkCookiesFile();
-            } else {
-                addLog('❌ クッキーの取得に失敗しました', 'error');
+    // ダウンロードフォルダを開く
+    if (openCookiesDirBtn) {
+        openCookiesDirBtn.addEventListener('click', async () => {
+            try {
+                addLog('📁 ダウンロードフォルダを開いています...', 'info');
+                console.log('Calling open-cookies-directory...');
+                const result = await ipcRenderer.invoke('open-cookies-directory');
+                console.log('Result:', result);
+                
+                if (result && result.success) {
+                    addLog('✅ ダウンロードフォルダを開きました', 'success');
+                    addLog(`📂 フォルダ場所: ${result.path}`, 'info');
+                    await checkCookiesFile();
+                } else {
+                    const errorMsg = result ? result.error : 'Unknown error';
+                    addLog(`❌ フォルダを開けませんでした: ${errorMsg}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error in openCookiesDirBtn click handler:', error);
+                addLog(`❌ エラーが発生しました: ${error.message}`, 'error');
+            }
+        });
+    }
+
+    // ダウンロードフォルダ選択
+    if (selectDownloadPathBtn) {
+        selectDownloadPathBtn.addEventListener('click', async () => {
+            try {
+                addLog('📁 ダウンロードフォルダを選択中...', 'info');
+                const result = await ipcRenderer.invoke('select-download-folder');
+                
+                if (result && result.success) {
+                    if (downloadPathInput) {
+                        downloadPathInput.value = result.path;
+                    }
+                    addLog('✅ ダウンロードフォルダを設定しました', 'success');
+                    addLog(`📂 保存先: ${result.path}`, 'info');
+                } else if (result && result.canceled) {
+                    addLog('ℹ️ フォルダ選択をキャンセルしました', 'info');
+                } else {
+                    const errorMsg = result ? result.error : 'Unknown error';
+                    addLog(`❌ フォルダ選択に失敗しました: ${errorMsg}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error in selectDownloadPathBtn click handler:', error);
+                addLog(`❌ エラーが発生しました: ${error.message}`, 'error');
             }
         });
     }
@@ -245,16 +292,45 @@ function setupEventListeners() {
 
 // クッキーファイルの確認
 async function checkCookiesFile() {
-    const exists = await ipcRenderer.invoke('check-cookies-file');
-    if (exists) {
-        cookiesStatus.textContent = '✅ 利用可能';
-        cookiesStatus.className = 'status success';
+    const result = await ipcRenderer.invoke('check-cookies-file');
+    if (result.exists) {
+        cookiesStatus.innerHTML = '<i class="fas fa-check text-emerald-600"></i> クッキーファイル利用可能';
+        cookiesStatus.className = 'text-sm text-emerald-600';
     } else {
-        cookiesStatus.textContent = '❌ 未設定';
-        cookiesStatus.className = 'status error';
+        cookiesStatus.innerHTML = '<i class="fas fa-times text-red-600"></i> 未設定';
+        cookiesStatus.className = 'text-sm text-red-600';
     }
-    return exists;
+    return result.exists;
 }
+
+// ダウンロードパスの初期化
+async function initializeDownloadPath() {
+    try {
+        const result = await ipcRenderer.invoke('get-download-path');
+        if (result.success && downloadPathInput) {
+            downloadPathInput.value = result.path;
+        }
+    } catch (error) {
+        console.error('Failed to initialize download path:', error);
+    }
+}
+
+// デフォルトパスの表示を更新
+async function updateDefaultPathDisplay() {
+    try {
+        const result = await ipcRenderer.invoke('get-default-download-path');
+        if (result.success) {
+            const defaultPathElement = document.getElementById('defaultDownloadPath');
+            if (defaultPathElement) {
+                defaultPathElement.textContent = result.path;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to update default path display:', error);
+    }
+}
+
+
 
 // 動画リストを読み込む
 async function loadVideoList() {
@@ -557,6 +633,8 @@ async function showVideoSelectionModal(urls) {
     });
 }
 
+
+
 // モーダル内の動画リストを読み込む
 async function loadModalVideoList(playlistUrl) {
     const modalVideoListContainer = document.getElementById('modalVideoListContainer');
@@ -571,7 +649,9 @@ async function loadModalVideoList(playlistUrl) {
 
         if (playlistUrl) {
             // プレイリストの場合
+            console.log('Loading playlist videos for:', playlistUrl);
             const videoList = await ipcRenderer.invoke('get-playlist-videos', playlistUrl);
+            console.log('Received video list:', videoList);
             
             if (videoList && videoList.length > 0) {
                 displayModalVideoList(videoList);
@@ -580,6 +660,7 @@ async function loadModalVideoList(playlistUrl) {
                     <div class="text-center text-gray-500 text-sm py-8">
                         <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
                         <p>動画リストの取得に失敗しました</p>
+                        <p class="text-xs mt-2">URL: ${playlistUrl}</p>
                     </div>
                 `;
             }
@@ -589,7 +670,9 @@ async function loadModalVideoList(playlistUrl) {
             const videoList = [];
             
             for (const url of urls) {
+                console.log('Loading video info for:', url);
                 const videoInfo = await ipcRenderer.invoke('get-video-info', url);
+                console.log('Received video info:', videoInfo);
                 if (videoInfo) {
                     videoList.push({
                         url: videoInfo.url || videoInfo.webpage_url,

@@ -32,3 +32,5 @@ coverage/
 
 _*
 */
+# Keep bin directory for yt-dlp binaries
+!bin/
