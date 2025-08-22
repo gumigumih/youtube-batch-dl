@@ -2,9 +2,7 @@ const { ipcRenderer } = require('electron');
 
 // DOM要素の取得
 const urlInput = document.getElementById('urlInput');
-const pasteBtn = document.getElementById('pasteBtn');
 const loadLastBtn = document.getElementById('loadLastBtn');
-const clearBtn = document.getElementById('clearBtn');
 
 const checkCookiesBtn = document.getElementById('checkCookiesBtn');
 const getCookiesBtn = document.getElementById('getCookiesBtn');
@@ -14,7 +12,7 @@ const progressSection = document.getElementById('progressSection');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
 const logOutput = document.getElementById('logOutput');
-const statusText = document.getElementById('statusText');
+const statusText = typeof document !== 'undefined' ? document.getElementById('statusText') : null;
 const rangeSection = document.getElementById('rangeSection');
 const rangeInputs = document.getElementById('rangeInputs');
 const modal = document.getElementById('modal');
@@ -52,22 +50,6 @@ async function initializeApp() {
 
 // イベントリスナーの設定
 function setupEventListeners() {
-    // クリップボードから貼り付け
-    pasteBtn.addEventListener('click', async () => {
-        try {
-            const urls = await ipcRenderer.invoke('get-clipboard-urls');
-            if (urls.length > 0) {
-                urlInput.value = urls.join('\n');
-                currentUrls = urls;
-                addLog(`📋 クリップボードから ${urls.length} 件のURLを取得しました`, 'info');
-            } else {
-                addLog('❌ クリップボードに有効なURLが見つかりませんでした', 'error');
-            }
-        } catch (error) {
-            addLog(`❌ クリップボードの読み取りに失敗しました: ${error.message}`, 'error');
-        }
-    });
-
     // 前回のURLを読み込み
     loadLastBtn.addEventListener('click', async () => {
         const lastUrls = await ipcRenderer.invoke('get-last-urls');
@@ -79,15 +61,6 @@ function setupEventListeners() {
             addLog('❌ 前回のURLが見つかりませんでした', 'error');
         }
     });
-
-    // クリア
-    clearBtn.addEventListener('click', () => {
-        urlInput.value = '';
-        currentUrls = [];
-        addLog('🗑️ URLをクリアしました', 'info');
-    });
-
-
 
     // クッキー確認
     checkCookiesBtn.addEventListener('click', async () => {
@@ -127,8 +100,6 @@ function setupEventListeners() {
             addLog('❌ URLが入力されていません', 'error');
             return;
         }
-
-
 
         const downloadMode = document.querySelector('input[name="downloadMode"]:checked').value;
         
@@ -288,7 +259,7 @@ function addLog(message, type = 'info') {
 
 // ステータス更新
 function updateStatus(message) {
-    statusText.textContent = message;
+    if (statusText) statusText.textContent = message;
 }
 
 // モーダル表示

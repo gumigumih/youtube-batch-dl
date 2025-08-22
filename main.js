@@ -23,9 +23,16 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 
   // 開発モードの場合はDevToolsを開く
-  if (process.argv.includes('--dev')) {
+  if (process.argv.includes('--dev') || process.argv.includes('--devtools')) {
     mainWindow.webContents.openDevTools();
   }
+  
+  // キーボードショートカットでDevToolsを開く
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 'f12') {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
 }
 
 app.whenReady().then(createWindow);

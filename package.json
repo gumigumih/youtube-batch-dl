@@ -37,7 +37,8 @@
   },
   "devDependencies": {
     "electron": "^28.3.3",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "tailwindcss": "^4.1.12"
   },
   "build": {
     "appId": "com.youtube-batch-dl.app",
