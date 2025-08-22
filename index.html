@@ -51,11 +51,11 @@
 
     <!-- メインコンテンツ -->
     <div class="max-w-7xl mx-auto px-6 py-6">
-        <div class="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-white/20 overflow-hidden">
+        <div class="">
             <div class="flex gap-8 p-8">
                 <!-- 左パネル - 設定 -->
                 <div class="flex-1">
-                    <section class="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/50 p-8">
+                    <section class="bg-white backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/50 p-8">
                         <h2 class="text-2xl font-bold mb-6 flex items-center gap-3 text-gray-800">
                             <div class="bg-gradient-to-r from-purple-100 to-purple-200 p-3 rounded-xl shadow-sm">
                                 <i class="fas fa-cog text-purple-600 text-xl"></i>
@@ -64,33 +64,6 @@
                         </h2>
                         
                         <div class="space-y-8">
-                            <!-- ダウンロードモード -->
-                            <div>
-                                <label class="block text-gray-700 text-sm font-semibold mb-4 uppercase tracking-wide">ダウンロードモード</label>
-                                <div class="flex space-y-3">
-                                    <label class="group flex items-center gap-4 cursor-pointer p-4 rounded-xl hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 transition-all duration-300 border border-transparent hover:border-purple-200">
-                                        <input type="radio" name="downloadMode" value="video" checked class="text-purple-600 w-5 h-5">
-                                        <div class="bg-gradient-to-r from-purple-100 to-purple-200 p-3 rounded-xl shadow-sm group-hover:scale-110 transition-transform duration-300">
-                                            <i class="fas fa-video text-purple-600"></i>
-                                        </div>
-                                        <div>
-                                            <span class="text-gray-800 font-semibold">動画（MP4）</span>
-                                            <p class="text-gray-500 text-sm">高品質な動画ファイル</p>
-                                        </div>
-                                    </label>
-                                    <label class="group flex items-center gap-4 cursor-pointer p-4 rounded-xl hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 transition-all duration-300 border border-transparent hover:border-purple-200">
-                                        <input type="radio" name="downloadMode" value="mp3" class="text-purple-600 w-5 h-5">
-                                        <div class="bg-gradient-to-r from-purple-100 to-purple-200 p-3 rounded-xl shadow-sm group-hover:scale-110 transition-transform duration-300">
-                                            <i class="fas fa-music text-purple-600"></i>
-                                        </div>
-                                        <div>
-                                            <span class="text-gray-800 font-semibold">音声のみ（MP3）</span>
-                                            <p class="text-gray-500 text-sm">軽量な音声ファイル</p>
-                                        </div>
-                                    </label>
-                                </div>
-                            </div>
-
                             <!-- 認証設定 -->
                             <div>
                                 <label class="block text-gray-700 text-sm font-semibold mb-4 uppercase tracking-wide">認証設定</label>
@@ -127,6 +100,13 @@
                                         </div>
                                         <span class="text-gray-800 font-semibold">範囲を指定</span>
                                     </label>
+                                    <label class="group flex items-center gap-4 cursor-pointer p-4 rounded-xl hover:bg-gradient-to-r hover:from-purple-50 hover:to-purple-100 transition-all duration-300 border border-transparent hover:border-purple-200">
+                                        <input type="radio" name="rangeMode" value="select" class="text-purple-600 w-5 h-5">
+                                        <div class="bg-gradient-to-r from-purple-100 to-purple-200 p-3 rounded-xl shadow-sm group-hover:scale-110 transition-transform duration-300">
+                                            <i class="fas fa-check-square text-purple-600"></i>
+                                        </div>
+                                        <span class="text-gray-800 font-semibold">動画を選択</span>
+                                    </label>
                                     <div id="rangeInputs" class="hidden ml-12 space-y-3">
                                         <div class="flex items-center gap-3">
                                             <input type="number" id="startRange" placeholder="開始番号" min="1" class="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 transition-all duration-300">
@@ -137,32 +117,29 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </section>
-                </div>
-                
-                <!-- 右パネル - 進捗表示 -->
-                <div class="flex-1">
-                    <section id="progressSection" class="bg-white/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/50 p-8 h-full">
-                        <h2 class="text-2xl font-bold mb-6 flex items-center gap-3 text-gray-800">
-                            <div class="bg-gradient-to-r from-purple-100 to-purple-200 p-3 rounded-xl shadow-sm">
-                                <i class="fas fa-chart-line text-purple-600 text-xl"></i>
-                            </div>
-                            進捗・ログ
-                        </h2>
-                        <div class="space-y-6">
-                            <!-- プログレスバー -->
-                            <div>
-                                <div class="w-full bg-gray-200 rounded-full h-3 mb-3 overflow-hidden shadow-inner">
-                                    <div id="progressFill" class="bg-gradient-to-r from-purple-600 via-purple-700 to-purple-800 h-3 rounded-full transition-all duration-500 ease-out shadow-lg relative">
-                                        <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+
+                            <!-- 動画選択セクション -->
+                            <div id="videoSelectionSection" class="hidden">
+                                <label class="block text-gray-700 text-sm font-semibold mb-4 uppercase tracking-wide">動画選択</label>
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <span class="text-sm text-gray-600">動画リストを読み込み中...</span>
+                                        <button id="loadVideoListBtn" class="group bg-gradient-to-r from-blue-500/20 to-blue-600/20 hover:from-blue-500/30 hover:to-blue-600/30 text-blue-600 hover:text-blue-700 font-medium py-2 px-4 rounded-lg transition-all duration-300 flex items-center gap-2 hover:scale-105 hover:shadow-lg border border-blue-400/30 hover:border-blue-400/50">
+                                            <i class="fas fa-sync-alt text-sm group-hover:rotate-180 transition-transform duration-300"></i>
+                                            <span>リスト更新</span>
+                                        </button>
+                                    </div>
+                                    <div id="videoListContainer" class="max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                        <div class="text-center text-gray-500 text-sm py-8">
+                                            <i class="fas fa-video text-2xl mb-2"></i>
+                                            <p>動画リストがここに表示されます</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center justify-between text-sm text-gray-600">
+                                        <span id="selectedCount">選択済み: 0件</span>
+                                        <button id="selectAllBtn" class="text-purple-600 hover:text-purple-700 font-medium">すべて選択</button>
                                     </div>
                                 </div>
-                                <div id="progressText" class="text-sm text-gray-600 font-medium">準備完了</div>
-                            </div>
-                            <!-- ログ出力 -->
-                            <div class="bg-gradient-to-br from-gray-50 to-gray-100/80 backdrop-blur-sm rounded-xl p-4 h-80 overflow-y-auto border border-gray-200/50 shadow-inner">
-                                <div id="logOutput" class="text-sm font-mono text-gray-700 space-y-2"></div>
                             </div>
                         </div>
                     </section>
@@ -171,9 +148,25 @@
         </div>
     </div>
 
-    <!-- モーダル -->
+    <!-- ステータスバー -->
+    <div id="statusBar" class="fixed w-full bottom-0 left-0 p-3 z-40">
+        <div class="flex items-center gap-2 mb-2">
+            <button id="toggleLogBtn" class="text-gray-400 hover:text-gray-200 text-xs font-medium flex items-center gap-1 transition-colors duration-200">
+                <i class="fas fa-chevron-up text-xs"></i>
+                <span>ログ</span>
+            </button>
+        </div>
+        <!-- ログ出力エリア -->
+        <div id="logContainer" class="hidden">
+            <div id="logOutput" class="w-full text-xs font-mono text-gray-200 bg-gray-900/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-gray-200/50 max-h-32 overflow-y-auto"></div>
+        </div>
+        <!-- 最新ログ（一行表示） -->
+        <div id="logOutputSingle" class="w-full text-xs font-mono text-gray-200 rounded-lg px-3 py-1 max-w-md border border-gray-200/50 truncate"></div>
+    </div>
+
+    <!-- 動画選択モーダル -->
     <div id="modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border border-gray-200/50">
+        <div class="bg-white rounded-2xl p-8 max-w-4xl w-full mx-4 shadow-2xl border border-gray-200/50">
             <h3 id="modalTitle" class="text-xl font-bold mb-4 text-gray-800"></h3>
             <p id="modalMessage" class="text-gray-600 mb-8 leading-relaxed"></p>
             <div class="flex justify-end gap-4">
@@ -185,6 +178,56 @@
                     <div class="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-purple-600/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <span class="relative z-10">確認</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 進捗モーダル -->
+    <div id="progressModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl p-8 max-w-2xl w-full mx-4 shadow-2xl border border-gray-200/50">
+            <div class="text-center">
+                <h3 class="text-2xl font-bold mb-6 text-gray-800 flex items-center justify-center gap-3">
+                    <div class="bg-gradient-to-r from-purple-100 to-purple-200 p-3 rounded-xl shadow-sm">
+                        <i class="fas fa-download text-purple-600 text-xl"></i>
+                    </div>
+                    ダウンロード中
+                </h3>
+                
+                <!-- プログレスバー -->
+                <div class="mb-6">
+                    <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
+                        <div id="modalProgressFill" class="bg-gradient-to-r from-purple-600 via-purple-700 to-purple-800 h-4 rounded-full transition-all duration-500 ease-out shadow-lg relative">
+                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+                        </div>
+                    </div>
+                    <div id="modalProgressText" class="text-sm text-gray-600 font-medium mt-2">準備中...</div>
+                </div>
+                
+                <!-- 現在のダウンロード情報 -->
+                <div class="bg-gray-50 rounded-xl p-4 mb-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700">現在のファイル:</span>
+                        <span id="modalCurrentFile" class="text-sm text-gray-600">-</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">進捗:</span>
+                        <span id="modalProgressCount" class="text-sm text-gray-600">0 / 0</span>
+                    </div>
+                </div>
+                
+                <!-- ログ出力 -->
+                <div class="bg-gray-50 rounded-xl p-4 max-h-40 overflow-y-auto border border-gray-200/30">
+                    <div id="modalLogOutput" class="text-sm font-mono text-gray-700 space-y-1"></div>
+                </div>
+                
+                <!-- キャンセルボタン -->
+                <div class="mt-6">
+                    <button id="modalCancelDownload" class="group relative bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium py-3 px-8 rounded-xl transition-all duration-300 flex items-center gap-2 hover:scale-105 hover:shadow-lg hover:shadow-red-500/25 mx-auto">
+                        <div class="absolute inset-0 bg-gradient-to-r from-red-400/20 to-red-500/20 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <i class="fas fa-stop relative z-10"></i>
+                        <span class="relative z-10">ダウンロードを停止</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

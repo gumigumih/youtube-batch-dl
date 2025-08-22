@@ -158,6 +158,48 @@ ipcMain.handle('get-video-info', async (event, url) => {
   }
 });
 
+ipcMain.handle('get-playlist-videos', async (event, url) => {
+  try {
+    const options = [
+      '--no-warnings',
+      '--no-call-home',
+      '--no-check-certificate',
+      '--flat-playlist',
+      '--dump-json'
+    ];
+
+    if (fs.existsSync('_cookies.txt')) {
+      options.push('--cookies', '_cookies.txt');
+    }
+
+    const { stdout } = await execPromise(`yt-dlp ${options.join(' ')} "${url}"`);
+    
+    const jsonObjects = stdout.trim().split('\n').map(line => {
+      try {
+        return JSON.parse(line);
+      } catch (e) {
+        return null;
+      }
+    }).filter(obj => obj !== null);
+
+    if (jsonObjects.length === 0) {
+      throw new Error('有効なJSONデータが見つかりませんでした');
+    }
+
+    // 動画情報を整形
+    return jsonObjects.map(obj => ({
+      url: obj.url || obj.webpage_url,
+      title: obj.title,
+      duration: obj.duration_string,
+      upload_date: obj.upload_date,
+      thumbnail: obj.thumbnail
+    }));
+  } catch (e) {
+    console.error('プレイリスト情報取得エラー:', e.message);
+    return null;
+  }
+});
+
 ipcMain.handle('download-video', async (event, { url, mode, saveDir, rangeOption }) => {
   try {
     // downloader.jsのrunDownload関数を呼び出す
