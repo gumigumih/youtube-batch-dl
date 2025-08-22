@@ -7,7 +7,10 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "tailwind:watch": "tailwindcss -i ./input.css -o ./styles.css --watch",
+    "tailwind:build": "tailwindcss -i ./input.css -o ./styles.css",
+    "dev:watch": "concurrently \"npm run tailwind:watch\" \"npm run dev\""
   },
   "repository": {
     "type": "git",
@@ -33,24 +36,31 @@
     "fs-extra": "^11.3.0",
     "prompts": "^2.4.2",
     "xlsx": "^0.18.5",
-    "yt-dlp-wrap": "^2.3.12"
+    "yt-dlp-wrap": "^2.3.12",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
     "electron": "^28.3.3",
     "electron-builder": "^24.13.3",
-    "tailwindcss": "^4.1.12"
+    "tailwindcss": "^3.4.17",
+    "vite": "^5.0.8",
+    "wait-on": "^7.2.0",
+    "autoprefixer": "^10.4.19"
   },
   "build": {
     "appId": "com.youtube-batch-dl.app",
-    "productName": "YouTube Batch Downloader",
+    "productName": "YouTube Downloader",
     "directories": {
       "output": "dist"
     },
     "files": [
       "main.js",
-      "renderer.js",
-      "index.html",
-      "styles.css",
+      "dist/**/*",
       "downloader.js",
       "node_modules/**/*"
     ],

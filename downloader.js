@@ -14,12 +14,15 @@ const cliProgress = require('cli-progress');
 let loadingInterval = null;
 
 // プログレスバーのインスタンス
-const progressBar = new cliProgress.SingleBar({
-  format: 'ダウンロード進捗 |{bar}| {percentage}% | {value}/{total} MB | {title}',
-  barCompleteChar: '\u2588',
-  barIncompleteChar: '\u2591',
-  hideCursor: true
-});
+let progressBar = null;
+if (typeof process !== 'undefined' && process.stdout && process.stdout.clearLine) {
+  progressBar = new cliProgress.SingleBar({
+    format: 'ダウンロード進捗 |{bar}| {percentage}% | {value}/{total} MB | {title}',
+    barCompleteChar: '\u2588',
+    barIncompleteChar: '\u2591',
+    hideCursor: true
+  });
+}
 
 // ローディングアニメーションを開始
 const startLoading = (message) => {
@@ -29,23 +32,26 @@ const startLoading = (message) => {
     loadingInterval = null;
   }
   
-  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-  let i = 0;
+  // Electron環境ではprocess.stdoutが利用できないため、ローディングアニメーションを無効化
+  if (typeof process !== 'undefined' && process.stdout && process.stdout.clearLine) {
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let i = 0;
 
-  // カーソルを非表示
-  process.stdout.write('\x1B[?25l');
-  // 最初のメッセージを表示（改行なし）
-  process.stdout.write(`${frames[i]} ${message}\r`);
-  
-  loadingInterval = setInterval(() => {
-    i = (i + 1) % frames.length;
-    // 現在の行をクリア
-    process.stdout.clearLine(0);
-    // カーソルを先頭に移動
-    process.stdout.cursorTo(0);
-    // アニメーションとメッセージを表示（改行なし）
+    // カーソルを非表示
+    process.stdout.write('\x1B[?25l');
+    // 最初のメッセージを表示（改行なし）
     process.stdout.write(`${frames[i]} ${message}\r`);
-  }, 80);
+    
+    loadingInterval = setInterval(() => {
+      i = (i + 1) % frames.length;
+      // 現在の行をクリア
+      process.stdout.clearLine(0);
+      // カーソルを先頭に移動
+      process.stdout.cursorTo(0);
+      // アニメーションとメッセージを表示（改行なし）
+      process.stdout.write(`${frames[i]} ${message}\r`);
+    }, 80);
+  }
 };
 
 // ローディングアニメーションを停止
@@ -54,8 +60,11 @@ const stopLoading = () => {
     clearInterval(loadingInterval);
     loadingInterval = null;
   }
-  process.stdout.write('\r\x1B[K'); // 現在の行をクリア
-  process.stdout.write('\x1B[?25h'); // カーソルを表示
+  // Electron環境ではprocess.stdoutが利用できないため、条件分岐で対応
+  if (typeof process !== 'undefined' && process.stdout && process.stdout.write) {
+    process.stdout.write('\r\x1B[K'); // 現在の行をクリア
+    process.stdout.write('\x1B[?25h'); // カーソルを表示
+  }
 };
 
 // ffmpegのパスを設定
@@ -320,17 +329,28 @@ const getTargetName = async (url) => {
 
 // ファイル名を安全にする関数
 const sanitizeFileName = (fileName) => {
+  // Windows予約語リスト
+  const windowsReserved = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+  
   // WindowsとMacで使用できない文字を_に置換
   // Windows: \ / : * ? " < > |
   // Mac: / : 
   // その他: 制御文字、改行文字など
-  return fileName
+  let sanitized = fileName
     .replace(/[\\/:*?"<>|\x00-\x1f\x7f]/g, '_')  // 制御文字も含める
     .replace(/\s+/g, ' ')  // 連続する空白を1つに
     .trim()  // 前後の空白を削除
     .replace(/^\.+/, '')  // 先頭のドットを削除（隠しファイルを避ける）
     .replace(/\.+$/, '')  // 末尾のドットを削除
     .substring(0, 255);   // ファイル名の最大長を制限
+  
+  // Windows予約語をチェック
+  const nameWithoutExt = sanitized.split('.')[0].toUpperCase();
+  if (windowsReserved.includes(nameWithoutExt)) {
+    sanitized = '_' + sanitized;
+  }
+  
+  return sanitized || 'untitled';
 };
 
 // 保存ディレクトリ作成
@@ -459,8 +479,8 @@ const writeExcel = (saveDir) => {
 // 単一動画のダウンロード
 const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
   const options = mode === 'mp3' 
-    ? ['-x', '--audio-format', 'mp3', '--audio-quality', '0'] 
-    : ['-f', '"bestvideo+bestaudio/best"', '--merge-output-format', 'mp4', '--embed-thumbnail'];
+    ? ['-f', 'bestaudio', '-x', '--audio-format', 'mp3', '--audio-quality', '0'] 
+    : ['-f', 'bestvideo+bestaudio', '--merge-output-format', 'mp4', '--embed-thumbnail'];
 
   // ダウンロードオプション
   const downloadOptions = [
@@ -489,6 +509,9 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
       shell: '/bin/bash'
     });
     
+    // プロセスを保存して停止可能にする
+    currentProcess = process;
+    
     let errorOutput = '';
     let currentVideo = '';
     let downloadedFiles = [];
@@ -498,6 +521,11 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
     let progressCompleted = false;  // 進捗完了フラグを追加
     
     process.stdout.on('data', (data) => {
+      // 停止要求をチェック
+      if (stopRequested) {
+        return;
+      }
+      
       const lines = data.toString().split('\n');
       for (const line of lines) {
         if (line.includes('[download] Destination:')) {
@@ -515,7 +543,7 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
           if (!fileName.match(/\.f\d+\.(webm|mp4)$/)) {
             downloadedFiles.push(fileName);
             console.log(`📥 ダウンロード済み: ${fileName}`);
-            if (progressBar.isActive) {
+            if (progressBar && progressBar.isActive) {
               progressBar.stop();
             }
             progressCompleted = true;  // ダウンロード済みの場合は完了フラグを設定
@@ -523,7 +551,7 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
         } else if (line.includes('[Merger] Merging formats into')) {
           const fileName = line.split('"')[1].replace('"', '');
           downloadedFiles.push(fileName);
-          if (progressBar.isActive) {
+          if (progressBar && progressBar.isActive) {
             progressBar.stop();
           }
           console.log(`📥 ダウンロード完了: ${fileName}`);
@@ -548,11 +576,13 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
                 const unit = progressMatch[3];
                 const sizeInMB = size * (unit === 'GiB' || unit === 'GB' ? 1024 : unit === 'KiB' || unit === 'KB' ? 0.001 : 1);
                 
-                if (!progressBar.isActive) {
+                if (progressBar && !progressBar.isActive) {
                   progressBar.start(Math.ceil(sizeInMB), 0, { title: currentTitle });
                 }
                 
-                progressBar.update(Math.ceil(sizeInMB * percent / 100), { title: currentTitle });
+                if (progressBar) {
+                  progressBar.update(Math.ceil(sizeInMB * percent / 100), { title: currentTitle });
+                }
                 
                 // 100%に達したら完了フラグを設定
                 if (percent >= 100) {
@@ -560,10 +590,12 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
                 }
               } else {
                 // パーセンテージのみの場合
-                if (!progressBar.isActive) {
+                if (progressBar && !progressBar.isActive) {
                   progressBar.start(100, 0, { title: currentTitle });
                 }
-                progressBar.update(Math.ceil(percent), { title: currentTitle });
+                if (progressBar) {
+                  progressBar.update(Math.ceil(percent), { title: currentTitle });
+                }
                 
                 // 100%に達したら完了フラグを設定
                 if (percent >= 100) {
@@ -583,15 +615,34 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
 
     await new Promise((resolve, reject) => {
       process.on('close', (code) => {
-        if (progressBar.isActive) {
+        if (progressBar && progressBar.isActive) {
           progressBar.stop();
         }
-        if (code === 0) {
+        
+        // 停止要求があった場合は成功として扱う
+        if (stopRequested) {
+          console.log('🛑 ダウンロードが停止されました');
+          resolve();
+        } else if (code === 0) {
           resolve();
         } else {
           reject(new Error(`ダウンロードが失敗しました（終了コード: ${code}）\nエラー詳細: ${errorOutput}`));
         }
       });
+      
+      // 停止要求を監視
+      const checkStopInterval = setInterval(() => {
+        if (stopRequested) {
+          clearInterval(checkStopInterval);
+          try {
+            if (currentProcess && currentProcess.pid) {
+              process.kill(currentProcess.pid, 'SIGTERM');
+            }
+          } catch (error) {
+            console.log('プロセス停止エラー:', error.message);
+          }
+        }
+      }, 100);
     });
 
     return true;
@@ -601,8 +652,16 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
   }
 };
 
+// 現在実行中のyt-dlpプロセスを管理
+let currentProcess = null;
+// ダウンロード停止フラグ
+let stopRequested = false;
+
 // yt-dlpでダウンロード
 const runDownload = async (url, mode, saveDir, rangeOption) => {
+  // 停止フラグをリセット
+  stopRequested = false;
+  
   // 現在のインデックスを取得
   let currentIndex = 1;
   try {
@@ -642,6 +701,12 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
       console.log(`📥 ${targetVideos.length}件の動画をダウンロードします`);
       
       for (const video of targetVideos) {
+        // 停止要求をチェック
+        if (stopRequested) {
+          console.log('🛑 ダウンロード停止が要求されました。ループを中断します。');
+          break;
+        }
+        
         const videoUrl = `https://youtu.be/${video.id}`;
         console.log(`\n🎥 ${video.title} をダウンロード中...`);
         const success = await downloadSingleVideo(videoUrl, mode, saveDir, currentIndex);
@@ -671,9 +736,43 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
   }
 };
 
+// プロセス停止機能
+const stopDownload = () => {
+  console.log('\n🛑 ダウンロード停止を要求しています...');
+  
+  // 停止フラグを設定
+  stopRequested = true;
+  
+  if (currentProcess) {
+    try {
+      // プロセスIDを取得して確実に停止
+      if (currentProcess.pid) {
+        process.kill(currentProcess.pid, 'SIGTERM');
+      } else {
+        currentProcess.kill('SIGTERM');
+      }
+    } catch (error) {
+      console.log('プロセス停止エラー:', error.message);
+    }
+    currentProcess = null;
+  }
+  
+  if (progressBar && progressBar.isActive) {
+    progressBar.stop();
+  }
+  
+  return true;
+};
+
+// 停止状態確認機能
+const isStopRequested = () => {
+  return stopRequested;
+};
+
 // 中断時のクリーンアップ
 process.on('SIGINT', () => {
   console.log('\n🛑 中断を検知しました。スクリプトを終了します。');
+  stopDownload();
   fs.unlinkSync('_metadata.jsonl').catch(() => {});
   process.exit(1);
 });
@@ -681,6 +780,8 @@ process.on('SIGINT', () => {
 // 関数をエクスポート
 module.exports = {
   runDownload,
+  stopDownload,
+  isStopRequested,
   getTargetName,
   createSaveDir,
   sanitizeFileName,

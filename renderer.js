@@ -1,46 +1,66 @@
 const { ipcRenderer } = require('electron');
 
 // DOM要素の取得
-const urlInput = document.getElementById('urlInput');
-const loadLastBtn = document.getElementById('loadLastBtn');
+let urlInput, checkCookiesBtn, getCookiesBtn, cookiesStatus, downloadBtn;
+let settingsPanel, videoSelectionPanel, progressPanel;
+       let videoListContainer, loadVideoListBtn, selectAllBtn, selectedCount;
+       let startDownloadBtn, progressFill, progressText, currentFile, progressCount;
+let progressLogOutput, cancelDownloadBtn, currentFileName;
 
-const checkCookiesBtn = document.getElementById('checkCookiesBtn');
-const getCookiesBtn = document.getElementById('getCookiesBtn');
-const cookiesStatus = document.getElementById('cookiesStatus');
-const downloadBtn = document.getElementById('downloadBtn');
-const progressSection = document.getElementById('progressSection');
-const logOutput = document.getElementById('logOutput'); // For expanded log container
-const logOutputSingle = document.getElementById('logOutputSingle'); // For single line log
-const logContainer = document.getElementById('logContainer'); // Log container
-const toggleLogBtn = document.getElementById('toggleLogBtn'); // Toggle log button
-const statusText = typeof document !== 'undefined' ? document.getElementById('statusText') : null;
-const rangeSection = document.getElementById('rangeSection');
-const rangeInputs = document.getElementById('rangeInputs');
-const videoSelectionSection = document.getElementById('videoSelectionSection');
-const videoListContainer = document.getElementById('videoListContainer');
-const loadVideoListBtn = document.getElementById('loadVideoListBtn');
-const selectAllBtn = document.getElementById('selectAllBtn');
-const selectedCount = document.getElementById('selectedCount');
-const modal = document.getElementById('modal');
-const modalTitle = document.getElementById('modalTitle');
-const modalMessage = document.getElementById('modalMessage');
-const modalOk = document.getElementById('modalOk');
-const modalCancel = document.getElementById('modalCancel');
-const progressModal = document.getElementById('progressModal');
-const modalProgressFill = document.getElementById('modalProgressFill');
-const modalProgressText = document.getElementById('modalProgressText');
-const modalCurrentFile = document.getElementById('modalCurrentFile');
-const modalProgressCount = document.getElementById('modalProgressCount');
-const modalLogOutput = document.getElementById('modalLogOutput');
-const modalCancelDownload = document.getElementById('modalCancelDownload');
+function getElements() {
+    console.log('getElements called');
+    urlInput = document.getElementById('urlInput');
+    checkCookiesBtn = document.getElementById('checkCookiesBtn');
+    getCookiesBtn = document.getElementById('getCookiesBtn');
+    cookiesStatus = document.getElementById('cookiesStatus');
+    downloadBtn = document.getElementById('downloadBtn');
+    
+    console.log('urlInput:', urlInput);
+    console.log('downloadBtn:', downloadBtn);
+    
+    // パネル要素
+    settingsPanel = document.getElementById('settingsPanel');
+    videoSelectionPanel = document.getElementById('videoSelectionPanel');
+    progressPanel = document.getElementById('progressPanel');
+    
+    // 設定パネル要素
+    
+    
+            // 動画選択パネル要素
+        videoListContainer = document.getElementById('videoListContainer');
+
+        loadVideoListBtn = document.getElementById('loadVideoListBtn');
+        selectAllBtn = document.getElementById('selectAllBtn');
+        selectedCount = document.getElementById('selectedCount');
+               startDownloadBtn = document.getElementById('startDownloadBtn');
+    
+    // 進捗パネル要素
+    progressFill = document.getElementById('progressFill');
+    progressText = document.getElementById('progressText');
+    currentFile = document.getElementById('currentFile');
+    progressCount = document.getElementById('progressCount');
+    progressLogOutput = document.getElementById('progressLogOutput');
+    currentFileName = document.getElementById('currentFileName');
+    cancelDownloadBtn = document.getElementById('cancelDownloadBtn');
+    
+
+
+}
 
 // 状態管理
 let isDownloading = false;
 let currentUrls = [];
+let currentPanel = 'settings';
+
+
 
 // イベントリスナーの設定
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM読み込み完了');
+    
+    // DOM要素を取得
+    getElements();
+    
     console.log('downloadBtn:', downloadBtn);
     console.log('urlInput:', urlInput);
     
@@ -51,6 +71,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // アプリケーションの初期化
 async function initializeApp() {
     addLog('アプリケーションを初期化中...', 'info');
+    
+    // デスクトップ通知の権限を要求
+    if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+    }
     
     // クッキーファイルの確認
     await checkCookiesFile();
@@ -67,162 +92,155 @@ async function initializeApp() {
 
 // イベントリスナーの設定
 function setupEventListeners() {
-    // 前回のURLを読み込み
-    loadLastBtn.addEventListener('click', async () => {
-        const lastUrls = await ipcRenderer.invoke('get-last-urls');
-        if (lastUrls.length > 0) {
-            urlInput.value = lastUrls.join('\n');
-            currentUrls = lastUrls;
-            addLog(`📂 前回のURL ${lastUrls.length} 件を読み込みました`, 'info');
-        } else {
-            addLog('❌ 前回のURLが見つかりませんでした', 'error');
-        }
-    });
 
     // クッキー確認
-    checkCookiesBtn.addEventListener('click', async () => {
-        await checkCookiesFile();
-    });
+    if (checkCookiesBtn) {
+        checkCookiesBtn.addEventListener('click', async () => {
+            await checkCookiesFile();
+        });
+    }
 
     // ブラウザからクッキー取得
-    getCookiesBtn.addEventListener('click', async () => {
-        const browser = await showModal('ブラウザ選択', '使用するブラウザを選択してください', [
-            { label: 'Chrome', value: 'chrome' },
-            { label: 'Firefox', value: 'firefox' },
-            { label: 'Edge', value: 'edge' },
-            { label: 'Safari', value: 'safari' }
-        ]);
-        
-        if (browser) {
-            addLog(`🌐 ${browser}からクッキーを取得中...`, 'info');
-            const success = await ipcRenderer.invoke('get-cookies-from-browser', browser);
+    if (getCookiesBtn) {
+        getCookiesBtn.addEventListener('click', async () => {
+            addLog('🌐 Chromeからクッキーを取得中...', 'info');
+            const success = await ipcRenderer.invoke('get-cookies-from-browser', 'chrome');
             if (success) {
                 addLog('✅ クッキーファイルを作成しました', 'success');
                 await checkCookiesFile();
             } else {
                 addLog('❌ クッキーの取得に失敗しました', 'error');
             }
-        }
-    });
-
-    // ダウンロード開始
-    console.log('ダウンロードボタンのイベントリスナーを設定中...');
-    downloadBtn.addEventListener('click', async () => {
-        console.log('ダウンロードボタンがクリックされました');
-        
-        if (isDownloading) {
-            addLog('⚠️ ダウンロードが既に実行中です', 'error');
-            return;
-        }
-
-        const urls = urlInput.value.trim().split('\n').filter(url => url.trim());
-        console.log('URLs:', urls);
-        
-        if (urls.length === 0) {
-            addLog('❌ URLが入力されていません', 'error');
-            return;
-        }
-
-        // 動画選択モーダルを表示
-        const result = await showVideoSelectionModal(urls);
-        if (!result) {
-            addLog('❌ ダウンロードがキャンセルされました', 'info');
-            return;
-        }
-        
-        const { downloadUrls, downloadMode } = result;
-        
-        // URLを保存
-        await ipcRenderer.invoke('save-urls', urls);
-        currentUrls = urls;
-
-        // ダウンロード実行
-        await startDownload(downloadUrls, downloadMode);
-    });
-
-    // 範囲設定の表示/非表示
-    document.querySelectorAll('input[name="rangeMode"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            if (e.target.value === 'custom') {
-                rangeInputs.style.display = 'flex';
-                videoSelectionSection.style.display = 'none';
-            } else if (e.target.value === 'select') {
-                rangeInputs.style.display = 'none';
-                videoSelectionSection.style.display = 'block';
-                loadVideoList();
-            } else {
-                rangeInputs.style.display = 'none';
-                videoSelectionSection.style.display = 'none';
-            }
         });
-    });
+    }
+
+        // ダウンロード開始
+    console.log('ダウンロードボタンのイベントリスナーを設定中...');
+    console.log('downloadBtn:', downloadBtn);
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('ダウンロードボタンがクリックされました');
+            console.log('イベント:', e);
+            
+            const urls = urlInput.value.trim().split('\n').filter(url => url.trim());
+            console.log('URLs:', urls);
+            console.log('urlInput.value:', urlInput.value);
+            
+            if (urls.length === 0) {
+                addLog('❌ URLが入力されていません', 'error');
+                return;
+            }
+
+            console.log('動画選択パネルに切り替えます');
+            // 動画選択パネルに切り替え
+            if (settingsPanel) settingsPanel.classList.add('hidden');
+            if (videoSelectionPanel) videoSelectionPanel.classList.remove('hidden');
+            if (progressPanel) progressPanel.classList.add('hidden');
+            
+            // ステータスを初期化
+    
+            
+            // 動画リストを読み込み
+            loadVideoList();
+            
+            // URLを保存
+            await ipcRenderer.invoke('save-urls', urls);
+            currentUrls = urls;
+        });
+    } else {
+        console.error('downloadBtnが見つかりません');
+    }
+
+
+
+    
+               if (startDownloadBtn) {
+               startDownloadBtn.addEventListener('click', async () => {
+                   if (isDownloading) {
+                       addLog('⚠️ ダウンロードが既に実行中です', 'error');
+                       return;
+                   }
+
+                   const selectedVideos = getSelectedVideos();
+                   const downloadMode = getDownloadMode();
+                   const thumbnailOption = getThumbnailOption();
+                   
+                   if (selectedVideos.length === 0) {
+                       addLog('❌ 動画が選択されていません', 'error');
+                       return;
+                   }
+
+                   console.log('ダウンロードモード:', downloadMode);
+                   console.log('選択された動画:', selectedVideos);
+
+                   // 進捗パネルに切り替え
+                   if (settingsPanel) settingsPanel.classList.add('hidden');
+                   if (videoSelectionPanel) videoSelectionPanel.classList.add('hidden');
+                   if (progressPanel) progressPanel.classList.remove('hidden');
+                   await startDownload(selectedVideos, 'selected', downloadMode, thumbnailOption);
+               });
+           }
+
+
 
     // 動画リスト読み込みボタン
-    loadVideoListBtn.addEventListener('click', () => {
-        loadVideoList();
-    });
+    if (loadVideoListBtn) {
+        loadVideoListBtn.addEventListener('click', () => {
+            loadVideoList();
+        });
+    }
 
     // すべて選択ボタン
-    selectAllBtn.addEventListener('click', () => {
-        const checkboxes = videoListContainer.querySelectorAll('input[type="checkbox"]');
-        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-        
-        checkboxes.forEach(cb => {
-            cb.checked = !allChecked;
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', () => {
+            const checkboxes = videoListContainer.querySelectorAll('input[type="checkbox"]');
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            
+            checkboxes.forEach(cb => {
+                cb.checked = !allChecked;
+            });
+            
+            updateSelectedCount();
         });
-        
-        updateSelectedCount();
-    });
+    }
 
-    // URL入力の監視
-    urlInput.addEventListener('input', () => {
-        const urls = urlInput.value.trim().split('\n').filter(url => url.trim());
-        const hasPlaylist = urls.some(url => url.includes('list=') || url.includes('/@') || url.includes('/channel/'));
-        
-        if (hasPlaylist) {
-            rangeSection.style.display = 'block';
-        } else {
-            rangeSection.style.display = 'none';
-        }
-    });
 
-    // モーダルイベント
-    modalOk.addEventListener('click', () => {
-        modal.style.display = 'none';
-        if (modal.resolve) {
-            modal.resolve(modal.result);
-        }
-    });
 
-    modalCancel.addEventListener('click', () => {
-        modal.style.display = 'none';
-        if (modal.resolve) {
-            modal.resolve(null);
-        }
-    });
+    // 進捗パネルのキャンセルボタン
+    if (cancelDownloadBtn) {
+        cancelDownloadBtn.addEventListener('click', async () => {
+            if (confirm('ダウンロードを停止しますか？')) {
+                                try {
+                    // まずフロントエンドの停止フラグを設定
+                    isDownloading = false;
+                    
+                    const result = await ipcRenderer.invoke('stop-download');
+                    if (result.success) {
+                        addLog('⚠️ ダウンロードが停止されました', 'warning');
+                        addProgressLog('⚠️ ダウンロードが停止されました', 'warning');
+                        
+                        // ボタンを有効化
+                        downloadBtn.disabled = false;
+                        
+                        // 設定パネルに戻る
+                        if (settingsPanel) settingsPanel.classList.remove('hidden');
+                        if (videoSelectionPanel) videoSelectionPanel.classList.add('hidden');
+                        if (progressPanel) progressPanel.classList.add('hidden');
+                    } else {
+                        addLog('❌ ダウンロード停止に失敗しました', 'error');
+                        addProgressLog('❌ ダウンロード停止に失敗しました', 'error');
+                    }
+                } catch (error) {
+                    addLog(`❌ ダウンロード停止エラー: ${error.message}`, 'error');
+                    addProgressLog(`❌ ダウンロード停止エラー: ${error.message}`, 'error');
+                }
+            }
+        });
+    }
 
-    // 進捗モーダルのキャンセルボタン
-    modalCancelDownload.addEventListener('click', () => {
-        if (confirm('ダウンロードを停止しますか？')) {
-            isDownloading = false;
-            progressModal.style.display = 'none';
-            addLog('⚠️ ダウンロードが停止されました', 'warning');
-        }
-    });
 
-    // ログ開閉ボタン
-    toggleLogBtn.addEventListener('click', () => {
-        const isExpanded = !logContainer.classList.contains('hidden');
-        if (isExpanded) {
-            // ログを閉じる
-            logContainer.classList.add('hidden');
-            toggleLogBtn.innerHTML = '<i class="fas fa-chevron-up text-xs"></i><span>ログ</span>';
-        } else {
-            // ログを開く
-            logContainer.classList.remove('hidden');
-            toggleLogBtn.innerHTML = '<i class="fas fa-chevron-down text-xs"></i><span>ログ</span>';
-        }
-    });
 }
 
 // クッキーファイルの確認
@@ -240,20 +258,46 @@ async function checkCookiesFile() {
 
 // 動画リストを読み込む
 async function loadVideoList() {
+    console.log('loadVideoList called');
+    console.log('videoListContainer:', videoListContainer);
+    
     const urls = urlInput.value.trim().split('\n').filter(url => url.trim());
+    console.log('URLs:', urls);
+    
     const playlistUrl = urls.find(url => url.includes('list=') || url.includes('/@') || url.includes('/channel/'));
+    console.log('playlistUrl:', playlistUrl);
+    
+    if (!videoListContainer) {
+        console.error('videoListContainer not found');
+        return;
+    }
     
     if (!playlistUrl) {
-        videoListContainer.innerHTML = `
-            <div class="text-center text-gray-500 text-sm py-8">
-                <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-                <p>プレイリストまたはチャンネルURLが必要です</p>
-            </div>
-        `;
+        console.log('No playlist URL found, showing single video option');
+        // 単体動画の場合
+        if (urls.length > 0) {
+    
+            const singleVideo = {
+                title: '入力された動画',
+                url: urls[0],
+                duration: '不明',
+                upload_date: '不明'
+            };
+            displayVideoList([singleVideo]);
+        } else {
+    
+            videoListContainer.innerHTML = `
+                <div class="text-center text-gray-500 text-sm py-8">
+                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                    <p>URLが入力されていません</p>
+                </div>
+            `;
+        }
         return;
     }
 
     try {
+
         videoListContainer.innerHTML = `
             <div class="text-center text-gray-500 text-sm py-8">
                 <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
@@ -264,8 +308,10 @@ async function loadVideoList() {
         const videoList = await ipcRenderer.invoke('get-playlist-videos', playlistUrl);
         
         if (videoList && videoList.length > 0) {
+    
             displayVideoList(videoList);
         } else {
+    
             videoListContainer.innerHTML = `
                 <div class="text-center text-gray-500 text-sm py-8">
                     <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
@@ -274,6 +320,7 @@ async function loadVideoList() {
             `;
         }
     } catch (error) {
+
         videoListContainer.innerHTML = `
             <div class="text-center text-red-500 text-sm py-8">
                 <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
@@ -285,9 +332,20 @@ async function loadVideoList() {
 
 // 動画リストを表示
 function displayVideoList(videos) {
+    console.log('displayVideoList called with:', videos);
+    console.log('videoListContainer:', videoListContainer);
+    
+    if (!videoListContainer) {
+        console.error('videoListContainer not found in displayVideoList');
+        return;
+    }
+    
+    // 動画データをグローバルに保存
+    window.videoListData = videos;
+    
     const videoListHTML = videos.map((video, index) => `
         <div class="flex items-center gap-3 p-3 hover:bg-gray-100 rounded-lg transition-colors duration-200">
-            <input type="checkbox" id="video-${index}" value="${video.url}" checked class="text-purple-600 w-4 h-4 rounded focus:ring-purple-500">
+            <input type="checkbox" id="video-${index}" data-video-index="${index}" value="${video.url}" checked class="text-purple-600 w-4 h-4 rounded focus:ring-purple-500">
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
                     <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">${index + 1}</span>
@@ -319,10 +377,68 @@ function displayVideoList(videos) {
 
 // 選択された動画数を更新
 function updateSelectedCount() {
-    const checkboxes = videoListContainer.querySelectorAll('input[type="checkbox"]');
-    const selectedVideos = Array.from(checkboxes).filter(cb => cb.checked);
-    selectedCount.textContent = `選択済み: ${selectedVideos.length}件`;
+    if (selectedCount && videoListContainer) {
+        const checkboxes = videoListContainer.querySelectorAll('input[type="checkbox"]');
+        const selectedVideos = Array.from(checkboxes).filter(cb => cb.checked);
+        selectedCount.textContent = `選択済み: ${selectedVideos.length}件`;
+    }
 }
+
+       // 選択された動画を取得
+       function getSelectedVideos() {
+           if (!videoListContainer || !window.videoListData) return [];
+           
+           const checkboxes = videoListContainer.querySelectorAll('input[type="checkbox"]:checked');
+           const selectedVideos = [];
+           
+           checkboxes.forEach(cb => {
+               const videoIndex = parseInt(cb.getAttribute('data-video-index'));
+               if (!isNaN(videoIndex) && window.videoListData[videoIndex]) {
+                   selectedVideos.push(window.videoListData[videoIndex]);
+               }
+           });
+           
+           console.log('getSelectedVideos returning:', selectedVideos);
+           return selectedVideos;
+       }
+
+       // ダウンロードモードを取得
+       function getDownloadMode() {
+           const downloadModeRadio = document.querySelector('input[name="downloadMode"]:checked');
+           return downloadModeRadio ? downloadModeRadio.value : 'video';
+       }
+
+       // サムネイル取得オプションを取得
+       function getThumbnailOption() {
+           const thumbnailCheckbox = document.getElementById('thumbnailOption');
+           return thumbnailCheckbox ? thumbnailCheckbox.checked : true;
+       }
+
+       // デスクトップ通知オプションを取得
+       function getDesktopNotificationOption() {
+           const notificationCheckbox = document.getElementById('desktopNotificationOption');
+           return notificationCheckbox ? notificationCheckbox.checked : true;
+       }
+
+       // デスクトップ通知を表示
+       function showDesktopNotification(title, body, icon = null) {
+           if (!getDesktopNotificationOption()) return;
+           
+           // 通知権限をチェック
+           if (Notification.permission === 'granted') {
+               new Notification(title, { 
+                   body, 
+                   icon: icon || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIzMiIgY3k9IjMyIiByPSIzMiIgZmlsbD0iIzk5MzNGRiIvPjxwYXRoIGQ9Ik0yMCAyNEgyMC42MjVDMjEuMjQ0IDI0IDIxLjcwNSAyNC4yOTcgMjIuMDA3IDI0Ljg5MUwyMy4xMzMgMjdIMjMuNzMzQzI0LjU5NSAyNyAyNS4zMzMgMjcuNjcyIDI1LjMzMyAyOC41VjM5LjVDMjUuMzMzIDQwLjMyOCAyNC41OTUgNDEgMjMuNzMzIDQxSDIwVjI0WiIgZmlsbD0id2hpdGUiLz48L3N2Zz4='
+               });
+           } else if (Notification.permission !== 'denied') {
+               // 通知権限を要求
+               Notification.requestPermission().then(permission => {
+                   if (permission === 'granted') {
+                       new Notification(title, { body, icon });
+                   }
+               });
+           }
+       }
 
 // 動画選択モーダルを表示
 async function showVideoSelectionModal(urls) {
@@ -551,152 +667,170 @@ function updateModalSelectedCount() {
 }
 
 // ダウンロード開始
-async function startDownload(urls, mode) {
+async function startDownload(videos, mode, downloadMode = 'video', thumbnailOption = true) {
     isDownloading = true;
     downloadBtn.disabled = true;
     
-    // 進捗モーダルを表示
-    progressModal.style.display = 'flex';
-    modalProgressFill.style.width = '0%';
-    modalProgressText.textContent = '準備中...';
-    modalCurrentFile.textContent = '-';
-    modalProgressCount.textContent = `0 / ${urls.length}`;
-    modalLogOutput.innerHTML = '';
+    console.log('Starting download with videos:', videos);
     
-    // ステータスバーを表示
-    const statusBar = document.getElementById('statusBar');
-    statusBar.style.display = 'block';
+    // 進捗パネルの初期化
+    if (progressFill) progressFill.style.width = '0%';
+    if (progressText) progressText.textContent = '準備中...';
+    if (currentFile) currentFile.textContent = '-';
+    if (currentFileName) currentFileName.textContent = '-';
+    if (progressCount) progressCount.textContent = `0 / ${videos.length}`;
+    if (progressLogOutput) progressLogOutput.innerHTML = '';
+    
+
+
     
     addLog('🚀 ダウンロードを開始します', 'info');
-    addModalLog('🚀 ダウンロードを開始します', 'info');
-    
+
     try {
-        for (let i = 0; i < urls.length; i++) {
-            const url = urls[i];
+        // 再生リストの場合は1つのフォルダを作成
+        let saveDir = null;
+        const urls = urlInput.value.trim().split('\n').filter(url => url.trim());
+        const playlistUrl = urls.find(url => url.includes('list=') || url.includes('/@') || url.includes('/channel/'));
+        
+        if (playlistUrl) {
+            // プレイリストタイトルを取得
+            addProgressLog('📁 プレイリストのフォルダを作成中...', 'info');
+            const playlistTitle = await ipcRenderer.invoke('get-playlist-title', playlistUrl);
+            const createdDir = await ipcRenderer.invoke('create-save-dir', playlistTitle);
+            
+            if (!createdDir) {
+                addLog(`❌ 保存ディレクトリの作成に失敗しました: ${playlistTitle}`, 'error');
+                return;
+            }
+            saveDir = createdDir;
+            addProgressLog(`📁 フォルダを作成しました: ${playlistTitle}`, 'success');
+        }
+        
+        for (let i = 0; i < videos.length; i++) {
+            // 停止要求をチェック
+            if (!isDownloading) {
+                addLog('🛑 ダウンロードが停止されました', 'warning');
+                addProgressLog('🛑 ダウンロードが停止されました', 'warning');
+                break;
+            }
+            
+            const video = videos[i];
+            const url = video.url;
             
             // 進捗更新
-            const modalProgress = ((i) / urls.length) * 100;
-            modalProgressFill.style.width = `${modalProgress}%`;
-            modalProgressText.textContent = `${i + 1}/${urls.length} 処理中...`;
-            modalProgressCount.textContent = `${i + 1} / ${urls.length}`;
+            const modalProgress = ((i) / videos.length) * 100;
+            if (progressFill) progressFill.style.width = `${modalProgress}%`;
+            if (progressText) progressText.textContent = `${i + 1}/${videos.length} 処理中`;
+            if (progressCount) progressCount.textContent = `${i + 1} / ${videos.length}`;
             
-            addLog(`📥 ${i + 1}/${urls.length}: ${url}`, 'info');
-            addModalLog(`📥 ${i + 1}/${urls.length}: ${url}`, 'info');
-            
-            // 動画情報を取得
-            const videoInfo = await ipcRenderer.invoke('get-video-info', url);
-            if (!videoInfo) {
-                addLog(`❌ 動画情報の取得に失敗しました: ${url}`, 'error');
-                addModalLog(`❌ 動画情報の取得に失敗しました: ${url}`, 'error');
-                continue;
-            }
-            
-            // 保存ディレクトリを作成
-            let targetName;
-            if (url.includes('list=')) {
-                targetName = videoInfo.playlist_title || videoInfo.channel || 'unknown_playlist';
-            } else if (url.includes('/@') || url.includes('/channel/')) {
-                targetName = videoInfo.channel || videoInfo.uploader || 'unknown_channel';
-            } else {
-                targetName = videoInfo.title || 'unknown_video';
-            }
+            addLog(`📥 ${i + 1}/${videos.length}: ${video.title}`, 'info');
+            addProgressLog(`📥 ${i + 1}/${videos.length}: ${video.title}`, 'info');
             
             // 現在のファイル名を更新
-            modalCurrentFile.textContent = targetName;
+            const targetName = video.title || 'unknown_video';
+            if (currentFile) currentFile.textContent = targetName;
+            if (currentFileName) currentFileName.textContent = targetName;
             
-            const saveDir = targetName;
-            const createdDir = await ipcRenderer.invoke('create-save-dir', saveDir);
-            if (!createdDir) {
-                addLog(`❌ 保存ディレクトリの作成に失敗しました: ${targetName}`, 'error');
-                addModalLog(`❌ 保存ディレクトリの作成に失敗しました: ${targetName}`, 'error');
-                continue;
-            }
-            
-            // 範囲オプションを取得
-            let rangeOption = '';
-            if (url.includes('list=') || url.includes('/@') || url.includes('/channel/')) {
-                const rangeMode = document.querySelector('input[name="rangeMode"]:checked').value;
-                if (rangeMode === 'custom') {
-                    const start = document.getElementById('startRange').value;
-                    const end = document.getElementById('endRange').value;
-                    if (start && end) {
-                        rangeOption = `--playlist-items ${start}-${end}`;
-                    }
+            // 単体動画の場合は個別フォルダを作成
+            if (!saveDir) {
+                const createdDir = await ipcRenderer.invoke('create-save-dir', targetName);
+                if (!createdDir) {
+                    addLog(`❌ 保存ディレクトリの作成に失敗しました: ${targetName}`, 'error');
+                    continue;
                 }
+                saveDir = createdDir;
             }
             
             // ダウンロード実行
             addLog(`🎥 ${targetName} をダウンロード中...`, 'info');
-            addModalLog(`🎥 ${targetName} をダウンロード中...`, 'info');
+            addProgressLog(`🎥 ${targetName} をダウンロード中...`, 'info');
+
             const result = await ipcRenderer.invoke('download-video', {
                 url,
                 mode,
+                downloadMode,
                 saveDir,
-                rangeOption
+                rangeOption: '',
+                thumbnailOption
             });
+            
+            // ダウンロード後に停止状態をチェック
+            const statusResult = await ipcRenderer.invoke('check-download-status');
+            if (statusResult.isStopRequested) {
+                addLog('🛑 ダウンロードが停止されました', 'warning');
+                addProgressLog('🛑 ダウンロードが停止されました', 'warning');
+                break;
+            }
             
             if (result.success) {
                 addLog(`✅ ${targetName} のダウンロードが完了しました`, 'success');
-                addModalLog(`✅ ${targetName} のダウンロードが完了しました`, 'success');
+                addProgressLog(`✅ ${targetName} のダウンロードが完了しました`, 'success');
             } else {
                 addLog(`❌ ${targetName} のダウンロードに失敗しました: ${result.error}`, 'error');
-                addModalLog(`❌ ${targetName} のダウンロードに失敗しました: ${result.error}`, 'error');
+                addProgressLog(`❌ ${targetName} のダウンロードに失敗しました: ${result.error}`, 'error');
             }
             
             // 進捗更新
-            const progress = ((i + 1) / urls.length) * 100;
-            modalProgressFill.style.width = `${progress}%`;
-            modalProgressText.textContent = `${i + 1}/${urls.length} 完了`;
+            const progress = ((i + 1) / videos.length) * 100;
+            if (progressFill) progressFill.style.width = `${progress}%`;
+            if (progressText) progressText.textContent = `${i + 1}/${videos.length} 完了`;
         }
         
         addLog('🎉 すべてのダウンロードが完了しました', 'success');
-        addModalLog('🎉 すべてのダウンロードが完了しました', 'success');
+        addProgressLog('🎉 すべてのダウンロードが完了しました', 'success');
+        
+        // デスクトップ通知を表示
+        showDesktopNotification(
+            'YouTube Downloader',
+            `${videos.length}件のダウンロードが完了しました`
+        );
         
     } catch (error) {
         addLog(`❌ ダウンロード中にエラーが発生しました: ${error.message}`, 'error');
-        addModalLog(`❌ ダウンロード中にエラーが発生しました: ${error.message}`, 'error');
     } finally {
         isDownloading = false;
         downloadBtn.disabled = false;
         
-        // 進捗モーダルを非表示
-        progressModal.style.display = 'none';
+
+
         
-        // ステータスバーを非表示
-        const statusBar = document.getElementById('statusBar');
-        statusBar.style.display = 'none';
+        // 設定パネルに戻る
+        if (settingsPanel) settingsPanel.classList.remove('hidden');
+        if (videoSelectionPanel) videoSelectionPanel.classList.add('hidden');
+        if (progressPanel) progressPanel.classList.add('hidden');
     }
 }
 
-// ログ追加
+// ログ追加（進捗パネル用のみ）
 function addLog(message, type = 'info') {
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${message}`;
-    
-    // 一行表示用（最新ログのみ）
-    logOutputSingle.textContent = logEntry;
-    
-    // 展開されたログエリア用（履歴表示）
-    const logElement = document.createElement('div');
-    logElement.className = `log-entry log-${type} mb-1`;
-    logElement.textContent = logEntry;
-    
-    logOutput.appendChild(logElement);
-    logOutput.scrollTop = logOutput.scrollHeight;
+    // 進捗パネルのログのみを使用
+    addProgressLog(message, type);
 }
 
-// モーダルログ追加
-function addModalLog(message, type = 'info') {
-    const timestamp = new Date().toLocaleTimeString();
+// 進捗パネルログ追加
+function addProgressLog(message, type = 'info') {
+    if (!progressLogOutput) return;
+
     const logEntry = document.createElement('div');
-    logEntry.className = `log-entry log-${type}`;
-    logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+    logEntry.textContent = message;
     
-    modalLogOutput.appendChild(logEntry);
-    modalLogOutput.scrollTop = modalLogOutput.scrollHeight;
+    switch (type) {
+        case 'error':
+            logEntry.className = 'text-red-600';
+            break;
+        case 'success':
+            logEntry.className = 'text-green-600';
+            break;
+        case 'warning':
+            logEntry.className = 'text-yellow-600';
+            break;
+        default:
+            logEntry.className = 'text-gray-700';
+    }
+    
+    progressLogOutput.appendChild(logEntry);
+    progressLogOutput.scrollTop = progressLogOutput.scrollHeight;
 }
-
-
 
 // モーダル表示
 function showModal(title, message, options = null) {
