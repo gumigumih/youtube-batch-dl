@@ -318,9 +318,24 @@ const getTargetName = async (url) => {
   }
 };
 
+// ファイル名を安全にする関数
+const sanitizeFileName = (fileName) => {
+  // WindowsとMacで使用できない文字を_に置換
+  // Windows: \ / : * ? " < > |
+  // Mac: / : 
+  // その他: 制御文字、改行文字など
+  return fileName
+    .replace(/[\\/:*?"<>|\x00-\x1f\x7f]/g, '_')  // 制御文字も含める
+    .replace(/\s+/g, ' ')  // 連続する空白を1つに
+    .trim()  // 前後の空白を削除
+    .replace(/^\.+/, '')  // 先頭のドットを削除（隠しファイルを避ける）
+    .replace(/\.+$/, '')  // 末尾のドットを削除
+    .substring(0, 255);   // ファイル名の最大長を制限
+};
+
 // 保存ディレクトリ作成
 const createSaveDir = (dirName) => {
-  const saveDir = dirName.replace(/[\\/:*?"<>|]/g, '_');
+  const saveDir = sanitizeFileName(dirName);
   fs.mkdirSync(saveDir, { recursive: true });
   console.log(`📁 フォルダを作成しました: ${saveDir}`);
   return saveDir;
@@ -668,6 +683,7 @@ module.exports = {
   runDownload,
   getTargetName,
   createSaveDir,
+  sanitizeFileName,
   checkCookiesFile,
   getClipboardUrls,
   getLastUrls,
