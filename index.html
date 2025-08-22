@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Batch Downloader</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎥 YouTube Batch Downloader</h1>
+            <p>YouTube のチャンネル・再生リスト・単体動画をまとめてダウンロード</p>
+        </header>
+
+        <main>
+            <!-- URL入力セクション -->
+            <section class="url-section">
+                <h2>📋 URL設定</h2>
+                <div class="url-input-group">
+                    <label for="urlInput">YouTube URL:</label>
+                    <textarea id="urlInput" placeholder="YouTubeのURLを入力してください（複数の場合は改行区切り）"></textarea>
+                </div>
+                
+                <div class="url-buttons">
+                    <button id="pasteBtn" class="btn btn-secondary">📋 クリップボードから貼り付け</button>
+                    <button id="loadLastBtn" class="btn btn-secondary">📂 前回のURLを読み込み</button>
+                    <button id="clearBtn" class="btn btn-danger">🗑️ クリア</button>
+                </div>
+            </section>
+
+            <!-- ダウンロード設定セクション -->
+            <section class="settings-section">
+                <h2>⚙️ ダウンロード設定</h2>
+                
+                <div class="setting-group">
+                    <label>ダウンロードモード:</label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="downloadMode" value="video" checked>
+                            🎥 動画（MP4）
+                        </label>
+                        <label>
+                            <input type="radio" name="downloadMode" value="mp3">
+                            🎵 音声のみ（MP3）
+                        </label>
+                    </div>
+                </div>
+
+
+
+                <div class="setting-group">
+                    <label>認証設定:</label>
+                    <div class="auth-group">
+                        <button id="checkCookiesBtn" class="btn btn-secondary">🔐 クッキー確認</button>
+                        <button id="getCookiesBtn" class="btn btn-secondary">🌐 ブラウザから取得</button>
+                        <span id="cookiesStatus" class="status">未確認</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ダウンロード範囲設定 -->
+            <section class="range-section" id="rangeSection" style="display: none;">
+                <h2>📊 ダウンロード範囲</h2>
+                <div class="range-controls">
+                    <label>
+                        <input type="radio" name="rangeMode" value="all" checked>
+                        📋 すべてダウンロード
+                    </label>
+                    <label>
+                        <input type="radio" name="rangeMode" value="custom">
+                        📝 範囲を指定
+                    </label>
+                    <div id="rangeInputs" class="range-inputs" style="display: none;">
+                        <input type="number" id="startRange" placeholder="開始番号" min="1">
+                        <span>から</span>
+                        <input type="number" id="endRange" placeholder="終了番号" min="1">
+                        <span>まで</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ダウンロード実行 -->
+            <section class="download-section">
+                <button id="downloadBtn" class="btn btn-primary btn-large">🚀 ダウンロード開始</button>
+            </section>
+
+            <!-- 進捗表示 -->
+            <section class="progress-section" id="progressSection" style="display: none;">
+                <h2>📈 ダウンロード進捗</h2>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">準備中...</div>
+                </div>
+                <div class="log-container">
+                    <div id="logOutput" class="log-output"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- ステータスバー -->
+        <footer class="status-bar">
+            <span id="statusText">準備完了</span>
+        </footer>
+    </div>
+
+    <!-- モーダル -->
+    <div id="modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3 id="modalTitle">確認</h3>
+            <p id="modalMessage"></p>
+            <div class="modal-buttons">
+                <button id="modalOk" class="btn btn-primary">OK</button>
+                <button id="modalCancel" class="btn btn-secondary">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

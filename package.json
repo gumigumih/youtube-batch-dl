@@ -2,15 +2,23 @@
   "name": "youtube-batch-dl",
   "version": "1.0.0",
   "description": "このスクリプトは、YouTube のチャンネル・再生リスト・単体動画をまとめてダウンロードできるツールです。 以下の特徴と使い方をまとめます。",
-  "main": "index.js",
+  "main": "main.js",
   "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gumigumih/youtube-batch-dl.git"
   },
-  "keywords": [],
+  "keywords": [
+    "youtube",
+    "downloader",
+    "electron",
+    "gui"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -26,5 +34,33 @@
     "prompts": "^2.4.2",
     "xlsx": "^0.18.5",
     "yt-dlp-wrap": "^2.3.12"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.youtube-batch-dl.app",
+    "productName": "YouTube Batch Downloader",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "downloader.js",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

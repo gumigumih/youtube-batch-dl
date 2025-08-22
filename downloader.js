@@ -1,6 +1,5 @@
 // index.js
 const prompts = require('prompts');
-const clipboardy = require('clipboardy');
 const fs = require('fs-extra');
 const path = require('path');
 const xlsx = require('xlsx');
@@ -65,6 +64,7 @@ process.env.FFMPEG_PATH = ffmpeg.path;
 // クリップボードからURL取得
 const getClipboardUrls = async () => {
   try {
+    const clipboardy = await import('clipboardy');
     const text = await clipboardy.default.read();
     
     if (!text) {
@@ -663,56 +663,69 @@ process.on('SIGINT', () => {
   process.exit(1);
 });
 
-// メイン処理
-(async () => {
-  // URL選択
-  const urls = await selectUrls();
-  console.log('選択されたURL:', urls);
+// 関数をエクスポート
+module.exports = {
+  runDownload,
+  getTargetName,
+  createSaveDir,
+  checkCookiesFile,
+  getClipboardUrls,
+  getLastUrls,
+  saveUrls
+};
 
-  // 選択されたURLを保存
-  if (urls.length > 0) {
-    saveUrls(urls);
-  }
+// CLIモードの場合のみメイン処理を実行
+if (require.main === module) {
+  (async () => {
+    // URL選択
+    const urls = await selectUrls();
+    console.log('選択されたURL:', urls);
 
-  // ダウンロードモード選択
-  const mode = await selectDownloadMode();
-  console.log('選択されたモード:', mode);
+    // 選択されたURLを保存
+    if (urls.length > 0) {
+      saveUrls(urls);
+    }
 
-  let rangeOption = '';
-  let applyToAll = false;
+    // ダウンロードモード選択
+    const mode = await selectDownloadMode();
+    console.log('選択されたモード:', mode);
 
-  // 各URLに対して処理
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
-    
-    // プレイリストやチャンネルの場合、範囲選択を先に行う
-    if (url.includes('list=') || url.includes('/@') || url.includes('/channel/')) {
-      if (i === 0 || !applyToAll) {
-        const rangeResult = await selectDownloadRange(url, i === 0, urls.length);
-        rangeOption = rangeResult.option;
-        applyToAll = rangeResult.applyToAll;
+    let rangeOption = '';
+    let applyToAll = false;
+
+    // 各URLに対して処理
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      
+      // プレイリストやチャンネルの場合、範囲選択を先に行う
+      if (url.includes('list=') || url.includes('/@') || url.includes('/channel/')) {
+        if (i === 0 || !applyToAll) {
+          const rangeResult = await selectDownloadRange(url, i === 0, urls.length);
+          rangeOption = rangeResult.option;
+          applyToAll = rangeResult.applyToAll;
+        }
+      }
+
+      // 情報取得とフォルダ作成
+      startLoading("動画のタイトルと情報を取得中です...");
+      
+      // 単体動画の場合は動画情報を取得
+      if (!url.includes('list=') && !url.includes('/@') && !url.includes('/channel/')) {
+        const { stdout } = await execPromise(`yt-dlp --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
+        const videoInfo = JSON.parse(stdout.trim());
+        const targetName = videoInfo.title;
+        stopLoading();
+        const saveDir = createSaveDir(targetName);
+        
+        await runDownload(url, mode, saveDir, '');
+      } else {
+        // プレイリストやチャンネルの場合
+        const targetName = await getTargetName(url);
+        stopLoading();
+        const saveDir = createSaveDir(targetName);
+        
+        await runDownload(url, mode, saveDir, rangeOption);
       }
     }
-
-    // 情報取得とフォルダ作成
-    startLoading("動画のタイトルと情報を取得中です...");
-    
-    // 単体動画の場合は動画情報を取得
-    if (!url.includes('list=') && !url.includes('/@') && !url.includes('/channel/')) {
-      const { stdout } = await execPromise(`yt-dlp --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
-      const videoInfo = JSON.parse(stdout.trim());
-      const targetName = videoInfo.title;
-      stopLoading();
-      const saveDir = createSaveDir(targetName);
-      
-      await runDownload(url, mode, saveDir, '');
-    } else {
-      // プレイリストやチャンネルの場合
-      const targetName = await getTargetName(url);
-      stopLoading();
-      const saveDir = createSaveDir(targetName);
-      
-      await runDownload(url, mode, saveDir, rangeOption);
-    }
-  }
-})();
+  })();
+}
