@@ -5,12 +5,15 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev",
-    "build": "electron-builder",
+    "dev": "concurrently \"npm run dev:vite\" \"wait-on http://localhost:5173 && npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "electron . --dev",
+    "build": "vite build && electron-builder",
+    "build:vite": "vite build",
+    "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "tailwind:watch": "tailwindcss -i ./input.css -o ./styles.css --watch",
-    "tailwind:build": "tailwindcss -i ./input.css -o ./styles.css",
-    "dev:watch": "concurrently \"npm run tailwind:watch\" \"npm run dev\""
+    "tailwind:watch": "tailwindcss -i ./src/index.css -o ./dist/styles.css --watch",
+    "tailwind:build": "tailwindcss -i ./src/index.css -o ./dist/styles.css"
   },
   "repository": {
     "type": "git",
@@ -60,9 +63,7 @@
     },
     "files": [
       "main.js",
-      "index.html",
-      "renderer.js",
-      "styles.css",
+      "dist/**/*",
       "downloader.js",
       "node_modules/**/*"
     ],

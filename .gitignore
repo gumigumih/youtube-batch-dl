@@ -16,6 +16,11 @@ dist/
 build/
 out/
 
+# Electron
+out/
+release/
+app/
+
 # IDE and editor files
 .idea/
 .vscode/
@@ -30,7 +35,5 @@ logs/
 # Testing
 coverage/
 
-_*
-*/
 # Keep bin directory for yt-dlp binaries
 !bin/

@@ -114,20 +114,28 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      enableRemoteModule: true
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, 'assets', 'icon.png'), // アイコンファイルがあれば
     title: 'YouTube Downloader'
   });
 
-  mainWindow.loadFile('index.html');
-
-  // 開発モードの場合はDevToolsを開く
-  if (process.argv.includes('--dev') || process.argv.includes('--devtools')) {
+  // 開発環境かどうかを判定
+  const isDev = process.argv.includes('--dev');
+  
+  if (isDev) {
+    // 開発環境の場合、Viteの開発サーバーを使用
+    mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
+  } else {
+    // プロダクション環境の場合、ビルドされたファイルを使用
+    mainWindow.loadFile('dist/index.html');
   }
+
+
   
   // キーボードショートカットでDevToolsを開く
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -202,32 +210,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  // クッキーファイルの保管場所を開く
-  ipcMain.handle('open-cookies-directory', async () => {
-    console.log('open-cookies-directory handler called');
-    try {
-      const dataPath = getAppDataPath();
-      console.log('Data path:', dataPath);
-      
-      // ディレクトリが存在しない場合は作成
-      if (!fs.existsSync(dataPath)) {
-        console.log('Creating directory:', dataPath);
-        fs.mkdirSync(dataPath, { recursive: true });
-      }
-      
-      // ダウンロードフォルダを開く（クッキーファイルと同じ場所）
-      const { shell } = require('electron');
-      console.log('Opening downloads path with shell:', dataPath);
-      await shell.openPath(dataPath);
-      
-      console.log('Downloads directory opened successfully:', dataPath);
-      return { success: true, path: dataPath };
-    } catch (e) {
-      console.error('Failed to open downloads directory:', e.message);
-      console.error('Error stack:', e.stack);
-      return { success: false, error: e.message };
-    }
-  });
+
 
   ipcMain.handle('check-cookies-file', async () => {
     try {
@@ -296,7 +279,6 @@ app.whenReady().then(async () => {
         '--no-warnings',
         '--no-call-home',
         '--no-check-certificate',
-        '--flat-playlist',
         '--dump-json'
       ];
 
@@ -305,13 +287,18 @@ app.whenReady().then(async () => {
       
       if (fs.existsSync(cookiesPath)) {
         options.push('--cookies', cookiesPath);
+        console.log('🍪 Using cookies file:', cookiesPath);
+      } else {
+        console.log('🍪 No cookies file found');
       }
 
       const ytDlpPath = getYtDlpPath();
       console.log('yt-dlp path:', ytDlpPath);
-      console.log('Command:', `"${ytDlpPath}" ${options.join(' ')} "${url}"`);
       
-      const { stdout } = await execPromise(`"${ytDlpPath}" ${options.join(' ')} "${url}"`);
+      const command = `"${ytDlpPath}" ${options.join(' ')} "${url}"`;
+      console.log('Command:', command);
+      
+      const { stdout } = await execPromise(command);
       
       const jsonObjects = stdout.trim().split('\n').map(line => {
         try {
@@ -326,11 +313,16 @@ app.whenReady().then(async () => {
       }
 
       console.log('Playlist videos retrieved successfully, count:', jsonObjects.length);
-      // 動画情報を整形
-      return jsonObjects.map(obj => ({
-        url: obj.url || obj.webpage_url,
-        title: obj.title,
-        duration: obj.duration_string,
+      console.log('First video object:', jsonObjects[0]);
+      
+      // 動画情報を整形（プレイリスト内の動画のみをフィルタ）
+      const videos = jsonObjects.filter(obj => obj._type !== 'playlist' && obj._type !== 'playlist_video');
+      console.log('Filtered videos count:', videos.length);
+      
+      return videos.map(obj => ({
+        url: obj.url || obj.webpage_url || obj.id,
+        title: obj.title || 'タイトル不明',
+        duration: obj.duration_string || '不明',
         upload_date: obj.upload_date,
         thumbnail: obj.thumbnail
       }));
@@ -381,24 +373,64 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle('download-video', async (event, { url, mode, downloadMode, saveDir, rangeOption, thumbnailOption }) => {
+  ipcMain.handle('download-video', async (event, { url, mode, downloadMode, saveDir, rangeOption, thumbnailOption, fileNameTemplate, videoIndex }) => {
     try {
       console.log('Download video - saveDir:', saveDir);
       console.log('Download mode:', downloadMode);
+      console.log('URL:', url);
       console.log('Directory exists?', fs.existsSync(saveDir));
+      console.log('fileNameTemplate received:', fileNameTemplate);
+      console.log('fileNameTemplate type:', typeof fileNameTemplate);
+      
+      // ディレクトリの存在確認
+      if (!fs.existsSync(saveDir)) {
+        throw new Error(`ダウンロードディレクトリが存在しません: ${saveDir}`);
+      }
       
       // downloader.jsのrunDownload関数を呼び出す
       const { runDownload } = require('./downloader.js');
       
-      // 既に作成済みのディレクトリに移動
-      process.chdir(saveDir);
+      // クッキーファイルをダウンロードディレクトリにコピー
+      const dataPath = getAppDataPath();
+      const cookiesPath = path.join(dataPath, '_cookies.txt');
+      const targetCookiesPath = path.join(saveDir, '_cookies.txt');
       
-      // downloadModeを適切なmodeに変換
-      const actualMode = downloadMode === 'audio' ? 'mp3' : 'mp4';
-      await runDownload(url, actualMode, '.', rangeOption, thumbnailOption);
-      return { success: true };
+      if (fs.existsSync(cookiesPath)) {
+        fs.copyFileSync(cookiesPath, targetCookiesPath);
+        console.log('🍪 クッキーファイルをコピーしました:', targetCookiesPath);
+      } else {
+        console.log('🍪 クッキーファイルが見つかりません:', cookiesPath);
+      }
+      
+      // 現在のディレクトリを保存
+      const originalCwd = process.cwd();
+      
+      try {
+        // ダウンロードディレクトリに移動
+        process.chdir(saveDir);
+        console.log('Changed directory to:', process.cwd());
+        
+        // downloadModeを適切なmodeに変換
+        const actualMode = downloadMode === 'audio' ? 'mp3' : 'mp4';
+        console.log('Starting download with mode:', actualMode);
+        
+        // タイムアウト付きでダウンロードを実行
+        const downloadPromise = runDownload(url, actualMode, '.', rangeOption, fileNameTemplate, thumbnailOption, videoIndex);
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('ダウンロードがタイムアウトしました')), 300000); // 5分
+        });
+        
+        await Promise.race([downloadPromise, timeoutPromise]);
+        console.log('Download completed successfully');
+        return { success: true };
+      } finally {
+        // 元のディレクトリに戻る
+        process.chdir(originalCwd);
+        console.log('Restored directory to:', process.cwd());
+      }
     } catch (e) {
       console.error('ダウンロードエラー:', e.message);
+      console.error('Error stack:', e.stack);
       return { success: false, error: e.message };
     }
   });
@@ -426,6 +458,17 @@ app.whenReady().then(async () => {
     }
   });
 
+  // 停止フラグリセットのIPC通信
+  ipcMain.handle('reset-stop-flag', async () => {
+    try {
+      const { resetStopFlag } = require('./downloader.js');
+      return { success: resetStopFlag() };
+    } catch (e) {
+      console.error('停止フラグリセットエラー:', e.message);
+      return { success: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('create-save-dir', (event, dirName) => {
     try {
       console.log('Original dirName:', dirName);
@@ -443,34 +486,6 @@ app.whenReady().then(async () => {
     } catch (e) {
       console.error('フォルダ作成エラー:', e.message);
       return null;
-    }
-  });
-
-  // フォルダ選択ダイアログを開く
-  ipcMain.handle('select-download-folder', async () => {
-    try {
-      const { dialog } = require('electron');
-      const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory'],
-        title: 'ダウンロードフォルダを選択'
-      });
-      
-      if (!result.canceled && result.filePaths.length > 0) {
-        const selectedPath = result.filePaths[0];
-        console.log('Selected download folder:', selectedPath);
-        
-        // 選択されたパスを保存
-        const dataPath = getAppDataPath();
-        const configPath = path.join(dataPath, '_download_path.txt');
-        fs.writeFileSync(configPath, selectedPath);
-        
-        return { success: true, path: selectedPath };
-      } else {
-        return { success: false, canceled: true };
-      }
-    } catch (e) {
-      console.error('Folder selection error:', e.message);
-      return { success: false, error: e.message };
     }
   });
 
@@ -508,7 +523,67 @@ app.whenReady().then(async () => {
     }
   });
 
+  // フォルダ選択ダイアログを開く
+  ipcMain.handle('select-download-folder', async () => {
+    try {
+      const { dialog } = require('electron');
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory'],
+        title: 'ダウンロードフォルダを選択'
+      });
+      
+      if (!result.canceled && result.filePaths.length > 0) {
+        const selectedPath = result.filePaths[0];
+        console.log('Selected download folder:', selectedPath);
+        
+        // 選択されたパスを保存
+        const dataPath = getAppDataPath();
+        const configPath = path.join(dataPath, '_download_path.txt');
+        fs.writeFileSync(configPath, selectedPath);
+        
+        return { success: true, path: selectedPath };
+      } else {
+        return { success: false, canceled: true };
+      }
+    } catch (e) {
+      console.error('Folder selection error:', e.message);
+      return { success: false, error: e.message };
+    }
+  });
+
+  // クッキーディレクトリを開く
+  ipcMain.handle('open-cookies-directory', async () => {
+    try {
+      const dataPath = getAppDataPath();
+      console.log('Opening cookies directory:', dataPath);
+      
+      // ディレクトリが存在しない場合は作成
+      if (!fs.existsSync(dataPath)) {
+        fs.mkdirSync(dataPath, { recursive: true });
+      }
+      
+      const { shell } = require('electron');
+      await shell.openPath(dataPath);
+      
+      return { success: true, path: dataPath };
+    } catch (e) {
+      console.error('Failed to open cookies directory:', e.message);
+      return { success: false, error: e.message };
+    }
+  });
+
   console.log('All IPC handlers registered successfully');
+  
+  // ファイル名更新のIPCハンドラー
+  ipcMain.handle('update-current-filename', (event, filename) => {
+    try {
+      console.log('Updating current filename:', filename);
+      return { success: true, filename };
+    } catch (e) {
+      console.error('Update filename error:', e.message);
+      return { success: false, error: e.message };
+    }
+  });
   
   createWindow();
 });

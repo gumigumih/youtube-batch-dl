@@ -431,7 +431,7 @@ const createSaveDir = (dirName) => {
   
   // 親ディレクトリも含めて作成
   fs.mkdirSync(saveDir, { recursive: true });
-  console.log(`📁 フォルダを作成しました: ${saveDir}`);
+  console.log(`📁 フォルダを作成しました: "${dirName}" → "${sanitizedName}"`);
   return saveDir;
 };
 
@@ -552,7 +552,105 @@ const writeExcel = (saveDir) => {
 };
 
 // 単一動画のダウンロード
-const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
+const downloadSingleVideo = async (url, mode, saveDir, currentIndex, fileNameTemplate = '%(number)03d - %(title)s', thumbnailOption = true) => {
+  // fileNameTemplateが文字列でない場合はデフォルト値を使用
+  if (typeof fileNameTemplate !== 'string') {
+    console.log('🔧 fileNameTemplateが文字列ではありません:', fileNameTemplate);
+    fileNameTemplate = '%(number)03d - %(title)s';
+  }
+  
+  console.log('🔧 downloadSingleVideo開始:', url);
+  console.log('🔧 mode:', mode);
+  console.log('🔧 saveDir:', saveDir);
+  console.log('🔧 currentIndex:', currentIndex);
+  console.log('🔧 fileNameTemplate:', fileNameTemplate);
+  
+  // 番号フォーマットを処理する関数
+  const processNumberFormat = (template, index) => {
+    console.log('🔧 processNumberFormat - template:', template);
+    console.log('🔧 processNumberFormat - index:', index);
+    
+    // %(number)03dを実際の番号に置換
+    let result = template;
+    
+    // 正規表現のデバッグ
+    const patterns = [
+      /%(number)(\d*)d/g,
+      /%(number)(\d+)d/g,
+      /%(number)(\d*)d/,
+      /%(number)(\d+)d/,
+      /%(number)03d/g,
+      /%(number)03d/
+    ];
+    
+    for (let i = 0; i < patterns.length; i++) {
+      const pattern = patterns[i];
+      console.log(`🔧 pattern ${i}:`, pattern.source, 'test:', pattern.test(template), 'matches:', template.match(pattern));
+    }
+    
+    console.log('🔧 template string:', JSON.stringify(template));
+    
+    // 動的桁数対応の文字列置換
+    console.log('🔧 Template type:', typeof template);
+    console.log('🔧 Template length:', template.length);
+    console.log('🔧 Template char codes:', Array.from(template).map(c => c.charCodeAt(0)));
+    
+    const numberPattern = /%(number)(\d*)d/g;
+    console.log('🔧 Number pattern:', numberPattern.source);
+    
+    // 正規表現をリセット
+    numberPattern.lastIndex = 0;
+    
+    // 正規表現の詳細テスト
+    const testResult = numberPattern.exec(template);
+    console.log('🔧 exec result:', testResult);
+    
+    const matches = template.match(numberPattern);
+    console.log('🔧 Matches:', matches);
+    
+    if (matches) {
+      console.log('🔧 Found number pattern:', matches[0]);
+      
+      result = template.replace(numberPattern, (match, p1, p2) => {
+        const width = p2 ? parseInt(p2) : 0;
+        const replacement = width > 0 ? String(index).padStart(width, '0') : String(index);
+        console.log('🔧 Replacing:', match, 'with:', replacement, '(width:', width, ')');
+        return replacement;
+      });
+    } else {
+      console.log('🔧 No number pattern found, using original template');
+      
+      // フォールバック: 直接文字列検索
+      if (template.indexOf('%(number)03d') !== -1) {
+        result = template.replace('%(number)03d', String(index).padStart(3, '0'));
+        console.log('🔧 Fallback replacement used');
+      }
+    }
+    
+    console.log('🔧 processNumberFormat - result:', result);
+    return result;
+  };
+  
+  // ファイル名を事前に取得
+  const getFilenameOptions = [
+    '--get-filename',
+    '-o', `${processNumberFormat(fileNameTemplate, currentIndex)}.%(ext)s`,
+    '--compat-options', 'filename-sanitization'
+  ];
+  
+  try {
+    const { stdout: filename } = await exec(`yt-dlp ${getFilenameOptions.join(' ')} "${url}"`);
+    const actualFilename = filename.trim().split('/').pop(); // パスからファイル名のみ取得
+    console.log('🔧 ダウンロード予定ファイル名:', actualFilename);
+    
+    // IPCでファイル名を送信
+    if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+      global.mainWindow.webContents.send('current-filename-updated', actualFilename);
+    }
+  } catch (error) {
+    console.log('🔧 ファイル名取得エラー:', error.message);
+  }
+  
   const options = mode === 'mp3' 
     ? ['-f', 'bestaudio', '-x', '--audio-format', 'mp3', '--audio-quality', '0'] 
     : ['-f', 'bestvideo+bestaudio', '--merge-output-format', 'mp4', '--embed-thumbnail'];
@@ -560,44 +658,44 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
   // ダウンロードオプション
   const downloadOptions = [
     ...options,
-    '-o', `"${String(currentIndex).padStart(3, '0')} - %(title)s.%(ext)s"`,
-    '--write-thumbnail',
-    '--convert-thumbnails', 'png',
+    '-o', `${processNumberFormat(fileNameTemplate, currentIndex)}.%(ext)s`,
     '--compat-options', 'filename-sanitization',
     '--download-archive', '_downloaded.txt',
     '--newline',
     '--progress-template', '"%(progress._percent_str)s of %(progress._total_bytes_str)s at %(progress._speed_str)s ETA %(progress._eta_str)s"',
     '--no-warnings',
     '--no-call-home',
-    '--no-check-certificate'
+    '--no-check-certificate',
+    '--prefer-ffmpeg',
+    '--merge-output-format', 'mp4'
   ];
 
-  // 開発環境とビルド環境でパスを分ける
-  const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
-  const basePath = isDev ? process.cwd() : path.join(process.resourcesPath, 'data');
-  
-  // クッキーファイルが存在する場合のみ追加
-  if (await checkCookiesFile()) {
-    downloadOptions.push('--cookies', path.join(basePath, '_cookies.txt'));
+  // サムネイルオプションを条件付きで追加
+  if (thumbnailOption) {
+    downloadOptions.push('--write-thumbnail', '--convert-thumbnails', 'png');
+  }
+
+  // クッキーファイルの存在をチェック
+  const cookiesPath = path.join(saveDir, '_cookies.txt');
+  if (fs.existsSync(cookiesPath)) {
+    downloadOptions.push('--cookies', cookiesPath);
+    console.log('🍪 クッキーファイルを使用:', cookiesPath);
   } else {
-    // ブラウザからクッキーを取得する設定がある場合
-    try {
-      const browserCookiesPath = path.join(basePath, '_browser_cookies.txt');
-      if (fs.existsSync(browserCookiesPath)) {
-        const browser = fs.readFileSync(browserCookiesPath, 'utf8').trim();
-        downloadOptions.push('--cookies-from-browser', browser);
-      }
-    } catch (e) {
-      // ブラウザ設定ファイルの読み込みに失敗した場合は無視
-    }
+    console.log('🍪 クッキーファイルが見つかりません:', cookiesPath);
   }
 
   try {    
     const ytDlpPath = getYtDlpPath();
     const command = `"${ytDlpPath}" ${downloadOptions.join(' ')} "${url}"`;
-    const process = exec(command, { 
+    console.log(`🔧 ダウンロード実行コマンド: ${command}`);
+    console.log(`🔧 生成されるファイル名: ${processNumberFormat(fileNameTemplate, currentIndex)}.%(ext)s`);
+    console.log(`🔧 作業ディレクトリ: ${saveDir}`);
+    
+    // 配列形式でコマンドを実行してシェルの解釈を避ける
+    const { spawn } = require('child_process');
+    const process = spawn(ytDlpPath, downloadOptions.concat([url]), { 
       cwd: saveDir,
-      shell: '/bin/bash'
+      stdio: ['ignore', 'pipe', 'pipe']
     });
     
     // プロセスを保存して停止可能にする
@@ -621,6 +719,8 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
       for (const line of lines) {
         if (line.includes('[download] Destination:')) {
           const tempFileName = line.split('Destination:')[1].trim();
+          console.log('🔧 [download] Destination line:', line);
+          console.log('🔧 tempFileName:', tempFileName);
           // 中間ファイルの場合は通知を表示しない
           if (!tempFileName.match(/\.f\d+\.(webm|mp4)$/)) {
             currentVideo = tempFileName.replace(/\.f\d+\.mp4$/, '.mp4');
@@ -647,6 +747,11 @@ const downloadSingleVideo = async (url, mode, saveDir, currentIndex) => {
           }
           console.log(`📥 ダウンロード完了: ${fileName}`);
           progressCompleted = true;  // マージ完了時に完了フラグを設定
+        } else if (line.includes('[info]')) {
+          // 画質情報をログ出力
+          if (line.includes('height') || line.includes('resolution')) {
+            console.log(`ℹ️  ${line.trim()}`);
+          }
         } else if (line.includes('%') && !progressCompleted) {  // 進捗完了フラグをチェック
           // 進捗情報の解析（複数のパターンに対応）
           const progressPatterns = [
@@ -749,7 +854,10 @@ let currentProcess = null;
 let stopRequested = false;
 
 // yt-dlpでダウンロード
-const runDownload = async (url, mode, saveDir, rangeOption) => {
+const runDownload = async (url, mode, saveDir, rangeOption, fileNameTemplate = '%(number)03d - %(title)s', thumbnailOption = true, videoIndex = 1) => {
+  console.log('🔧 runDownload - fileNameTemplate:', fileNameTemplate);
+  console.log('🔧 runDownload - fileNameTemplate type:', typeof fileNameTemplate);
+  
   // 停止フラグをリセット
   stopRequested = false;
   
@@ -791,18 +899,20 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
       const targetName = path.basename(saveDir);
       console.log(`📥 ${targetVideos.length}件の動画をダウンロードします`);
       
-      for (const video of targetVideos) {
+      for (let i = 0; i < targetVideos.length; i++) {
         // 停止要求をチェック
         if (stopRequested) {
           console.log('🛑 ダウンロード停止が要求されました。ループを中断します。');
           break;
         }
         
+        const video = targetVideos[i];
+        const videoIndex = i + 1; // 再生リストの順番（1から開始）
         const videoUrl = `https://youtu.be/${video.id}`;
-        console.log(`\n🎥 ${video.title} をダウンロード中...`);
-        const success = await downloadSingleVideo(videoUrl, mode, saveDir, currentIndex);
+        console.log(`\n🎥 ${videoIndex}/${targetVideos.length}: ${video.title} をダウンロード中...`);
+        const success = await downloadSingleVideo(videoUrl, mode, saveDir, videoIndex, fileNameTemplate, thumbnailOption);
         if (success) {
-          currentIndex++;
+          console.log(`✅ ${videoIndex}/${targetVideos.length}: ${video.title} のダウンロードが完了しました`);
         }
       }
 
@@ -810,21 +920,21 @@ const runDownload = async (url, mode, saveDir, rangeOption) => {
       console.log(`✅ ${targetName} のダウンロードが完了しました！`);
       writeExcel(saveDir);
     } else {
-      // 単一動画の場合
-      startLoading("動画情報を取得中です...");
-      const ytDlpPath = getYtDlpPath();
-      const { stdout } = await execPromise(`"${ytDlpPath}" --no-warnings --no-call-home --no-check-certificate --flat-playlist --dump-json --cookies _cookies.txt "${url}"`);
-      const videoInfo = JSON.parse(stdout.trim());
-      stopLoading();
-
-      await downloadSingleVideo(url, mode, saveDir, currentIndex);
-
-      stopLoading();
-      console.log(`✅ ${videoInfo.title} のダウンロードが完了しました！`);
-      writeExcel(saveDir);
+      // 単一動画の場合 - 直接ダウンロード処理を実行
+      console.log('🔧 単一動画のダウンロードを開始します...');
+      
+      const success = await downloadSingleVideo(url, mode, saveDir, videoIndex, fileNameTemplate, thumbnailOption);
+      
+      if (success) {
+        console.log(`✅ 動画のダウンロードが完了しました！`);
+        writeExcel(saveDir);
+      } else {
+        throw new Error('ダウンロードが失敗しました');
+      }
     }
   } catch (e) {
     console.error(`\n❌ ${url} のダウンロードに失敗しました:`, e.message);
+    throw e; // エラーを再スローして上位で処理できるようにする
   }
 };
 
@@ -856,6 +966,13 @@ const stopDownload = () => {
   return true;
 };
 
+// 停止フラグをリセットする機能
+const resetStopFlag = () => {
+  stopRequested = false;
+  console.log('🔄 停止フラグをリセットしました');
+  return true;
+};
+
 // 停止状態確認機能
 const isStopRequested = () => {
   return stopRequested;
@@ -873,6 +990,7 @@ process.on('SIGINT', () => {
 module.exports = {
   runDownload,
   stopDownload,
+  resetStopFlag,
   isStopRequested,
   getTargetName,
   createSaveDir,
